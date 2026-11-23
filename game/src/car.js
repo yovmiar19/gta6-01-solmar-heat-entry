@@ -87,6 +87,8 @@ export function createCar() {
   let speed = 0; // signed, metres per second; positive is forward
   let steer = 0; // smoothed steering angle, radians
   let spin = 0; // wheel roll angle
+  let hits = 0; // building scrapes, one per scrape (the police count them)
+  let wasColliding = false;
 
   /** Shortest signed angle from `from` to `to`. */
   function angleDelta(from, to) {
@@ -102,6 +104,10 @@ export function createCar() {
     get yaw() { return yaw; },
     /** Signed speed in metres per second. */
     get speed() { return speed; },
+    /** Building scrapes so far (one per scrape, not per frame). */
+    get hits() { return hits; },
+    /** A police ram: lose more than half the speed at once. */
+    ram() { speed *= 0.45; },
     /** Put the car on a heading at once (spawn / screenshot staging). */
     setHeading(nextYaw) {
       yaw = nextYaw;
@@ -146,6 +152,7 @@ export function createCar() {
       group.position.z += fz * speed * dt;
       group.position.x = Math.max(-world.bounds, Math.min(world.bounds, group.position.x));
       group.position.z = Math.max(-world.bounds, Math.min(world.bounds, group.position.z));
+      let colliding = false;
       for (const box of world.colliders) {
         const cx = Math.max(box.minX, Math.min(group.position.x, box.maxX));
         const cz = Math.max(box.minZ, Math.min(group.position.z, box.maxZ));
@@ -153,6 +160,7 @@ export function createCar() {
         const dz = group.position.z - cz;
         const dist = Math.hypot(dx, dz);
         if (dist < RADIUS) {
+          colliding = true;
           if (dist > 0.001) {
             // Push out along the shortest way and scrub half the speed.
             group.position.x = cx + (dx / dist) * RADIUS;
@@ -163,6 +171,9 @@ export function createCar() {
           speed *= 0.5;
         }
       }
+      // One scrape per press against a wall, not one per frame of it.
+      if (colliding && !wasColliding) hits += 1;
+      wasColliding = colliding;
 
       // --- wheels: front pair steers, all four roll with the speed ----------
       spin += (speed * dt) / 0.34;

@@ -14,7 +14,11 @@ export function createHud() {
   const paceEl = document.getElementById('pace-bar');
   const statusEl = document.getElementById('status');
   const promptEl = document.getElementById('car-prompt');
+  const wantedBoxEl = document.getElementById('wanted-box');
+  const wantedStarsEl = document.getElementById('wanted-stars');
+  const bustedEl = document.getElementById('busted-overlay');
   let lastState = '';
+  let lastWanted = -1;
 
   function showSpeed(kmh, top) {
     speedEl.textContent = String(kmh);
@@ -62,6 +66,24 @@ export function createHud() {
       } else {
         promptEl.style.display = 'none';
       }
+    },
+    /**
+     * Show the wanted level as stars (★★★☆☆). The box only appears while
+     * the heat is on; at zero stars it hides again.
+     */
+    setWanted(stars) {
+      if (stars === lastWanted) return;
+      lastWanted = stars;
+      if (stars > 0) {
+        wantedStarsEl.textContent = '★'.repeat(stars) + '☆'.repeat(5 - stars);
+        wantedBoxEl.style.display = 'block';
+      } else {
+        wantedBoxEl.style.display = 'none';
+      }
+    },
+    /** Show or hide the big BUSTED overlay in the middle of the screen. */
+    showBusted(show) {
+      bustedEl.style.display = show ? 'flex' : 'none';
     },
   };
 }
