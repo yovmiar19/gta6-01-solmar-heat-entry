@@ -102,6 +102,30 @@ export function createProtagonist() {
       body.rotation.x = lean;
     },
     /**
+     * Sit on a motorbike: face `nextYaw` at once (the rider turns with the
+     * bike, no lag), thighs bent forward astride the tank and splayed a
+     * touch so the legs clear it, arms reaching forward for the bars, and
+     * a slight forward lean. The game loop calls this every frame while
+     * he rides, so the pose holds against the walk animation.
+     */
+    ride(nextYaw) {
+      targetYaw = nextYaw;
+      yaw = nextYaw;
+      group.rotation.y = nextYaw;
+      legL.rotation.x = -1.25; legR.rotation.x = -1.25;
+      legL.rotation.z = -0.18; legR.rotation.z = 0.18;
+      armL.rotation.x = -1.15; armR.rotation.x = -1.15;
+      body.rotation.x = 0.12;
+    },
+    /** Back on his feet: limbs and lean to neutral (the idle update settles them too). */
+    stand() {
+      legL.rotation.x = 0; legR.rotation.x = 0;
+      legL.rotation.z = 0; legR.rotation.z = 0;
+      armL.rotation.x = 0; armR.rotation.x = 0;
+      body.rotation.x = 0;
+      group.position.y = 0;
+    },
+    /**
      * Advance the animation. `speed` is the current ground speed (0 when idle);
      * `moving` says whether a move key is held. Called every frame.
      */

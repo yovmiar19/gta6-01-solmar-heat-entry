@@ -79,6 +79,7 @@ let driving = false;
 let speed = 0; // Raka's ground speed on foot, smoothed toward the target
 let vehicle = null; // the ride Raka is driving (his Sunset GT or a stolen one)
 let vehicleName = 'Sunset GT'; // the ride's name, shown on the HUD
+let ridingBike = false; // true while Raka rides the motorbike in the open
 
 // --- busted state -----------------------------------------------------------
 // A patrol car pinned Raka: controls freeze, the BUSTED screen goes up, and
@@ -106,6 +107,7 @@ function startWasted() {
 
 function respawn() {
   driving = false;
+  ridingBike = false;
   vehicle = null;
   vehicleName = 'Sunset GT';
   car.halt();
@@ -159,13 +161,23 @@ function enterVehicle(ride) {
     ride.stolen = true;
     police.noteTheft();
   }
-  hero.group.visible = false;
+  // A motorbike has no cabin: Raka stays visible, seated on it (see the
+  // driving branch, which puts him on the seat every frame). Every other
+  // ride hides him inside, as before.
+  if (ride.type === 'Motorbike') {
+    ridingBike = true;
+    hero.group.visible = true;
+  } else {
+    ridingBike = false;
+    hero.group.visible = false;
+  }
   chase.setDistance(ride.camDistance ?? CAR_CAM_DISTANCE);
   hud.setPrompt(null);
 }
 
 function exitVehicle() {
   driving = false;
+  ridingBike = false;
   vehicle.halt();
   speed = 0;
   // Step out beside the ride (its right side) and face the way it was going.
@@ -177,6 +189,7 @@ function exitVehicle() {
     Math.max(-world.bounds, Math.min(world.bounds, vehicle.group.position.z + rightZ * 2.4)),
   );
   hero.group.visible = true;
+  hero.stand(); // limbs back to neutral (a rider's bent pose must not follow him on foot)
   hero.face(vehicle.yaw);
   vehicle = null;
   vehicleName = 'Sunset GT';
@@ -267,6 +280,17 @@ function step(dt) {
   if (driving) {
     // --- behind the wheel ---------------------------------------------------
     vehicle.update(dt, input, world);
+    // On a motorbike Raka rides in the open: seat him on it — hips on the
+    // seat (local z -0.5, y 0.07 so his hips sit on the seat top), facing
+    // the way it goes, so he turns and leans with the bike.
+    if (ridingBike) {
+      hero.group.position.set(
+        vehicle.group.position.x - Math.sin(vehicle.yaw) * 0.5,
+        0.07,
+        vehicle.group.position.z - Math.cos(vehicle.yaw) * 0.5,
+      );
+      hero.ride(vehicle.yaw);
+    }
     // The camera eases in BEHIND the ride: its yaw is the car's heading
     // plus half a turn, so it sits on the side opposite to where the car
     // faces and looks the way the car is going. (The car's yaw is the
@@ -415,6 +439,12 @@ window.__solmar = {
   get hits() { return combat.hits; },
   get shotsFired() { return combat.shotsFired; },
   get vehicleName() { return driving ? vehicleName : null; },
+  get vehicleType() { return driving ? (vehicle.type ?? 'Car') : null; },
+  get ridingBike() { return ridingBike; },
+  get heroVisible() { return hero.group.visible; },
+  get heroPos3() {
+    return { x: hero.group.position.x, y: hero.group.position.y, z: hero.group.position.z };
+  },
   get npcCount() { return traffic.npcCount; },
   get fleeingCount() { return traffic.fleeingCount; },
   get cash() { return missions.cash; },
@@ -433,7 +463,7 @@ window.__solmar = {
     return traffic.vehicles.map((v) => ({
       name: v.name, type: v.type,
       x: v.group.position.x, z: v.group.position.z,
-      speed: v.speed, stolen: v.stolen,
+      yaw: v.yaw, speed: v.speed, stolen: v.stolen,
     }));
   },
   hero, car, police, vitals, combat, traffic, missions, radar, chase,

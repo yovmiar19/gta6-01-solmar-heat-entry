@@ -284,7 +284,7 @@ function buildSedanBody(group, color, wheels) {
   makeWheel(group, 0.85, -1.45, 0.34, 0.26, false, wheels);
 }
 
-/** A motorbike: narrow, two wheels, quick. No rider — Raka hides aboard. */
+/** A motorbike: narrow, two wheels, quick. Raka rides it in the open — the game loop seats him on it (see main.js enterVehicle). */
 function buildBikeBody(group, color, wheels) {
   group.add(vbox(0.5, 0.35, 2.0, color, 0, 0.55, 0)); // frame
   group.add(vbox(0.45, 0.28, 0.7, TRIM, 0, 0.82, 0.25)); // tank
