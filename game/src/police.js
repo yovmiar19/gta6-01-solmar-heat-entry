@@ -359,6 +359,18 @@ export function createPolice(scene, world) {
       quietTime = 0;
       earnStar();
     },
+    /** Raka stole a civilian ride: that is a crime, one star. */
+    noteTheft() {
+      if (busted) return;
+      quietTime = 0;
+      earnStar();
+    },
+    /** Raka hit a pedestrian (with a vehicle, or with a round): a crime. */
+    noteAssault() {
+      if (busted) return;
+      quietTime = 0;
+      earnStar();
+    },
     /** Set the wanted level at once (tests and screenshot staging). */
     setWanted(n) {
       wanted = Math.max(0, Math.min(MAX_WANTED, n));

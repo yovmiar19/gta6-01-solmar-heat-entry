@@ -2,9 +2,11 @@
 // click fires one round, R reloads the magazine from the reserve. A shot is
 // a ray from Raka's chest along the way he faces: it can hit the practice
 // dummy on the avenue, a patrol car (shooting the police is a crime, so it
-// earns a star), or a wall, and it always shows a muzzle flash, a tracer
-// line and a spark where it lands. Ammo, the hit count and the reload state
-// are the HUD's to read; the game loop calls update() every frame.
+// earns a star), a pedestrian (hitting one is a crime too, so it earns a
+// star and makes them run), or a wall, and it always shows a muzzle flash,
+// a tracer line and a spark where it lands. Ammo, the hit count and the
+// reload state are the HUD's to read; the game loop calls update() every
+// frame.
 
 const MAG_SIZE = 12; // rounds in one magazine
 const RESERVE_START = 24; // spare rounds Raka starts with
@@ -23,10 +25,12 @@ const SPARK_COLOR = 0xffd23e;
 /**
  * Build the combat rig. `scene` is the city, `hero` is Raka's rig (for the
  * muzzle position and the aim pose), `police` is the wanted system (a hit on
- * a patrol car earns a star through noteShooting), and `onHit` fires when a
- * round lands on something shootable (the HUD flashes its hit marker).
+ * a patrol car earns a star through noteShooting), `onHit` fires when a
+ * round lands on something shootable (the HUD flashes its hit marker), and
+ * `onShot` fires after every round that leaves the muzzle, with the landing
+ * point (so the street can scare the pedestrians standing near it).
  */
-export function createCombat(scene, hero, police, onHit) {
+export function createCombat(scene, hero, police, onHit, onShot) {
   // --- the practice dummy: a pole and a ringed board on the avenue ---------
   // It stands 8 metres north of where Raka starts, so a shot straight ahead
   // from the start lands on it. Its meshes carry userData.dummy, so the
@@ -113,14 +117,19 @@ export function createCombat(scene, hero, police, onHit) {
   let tracerTimer = 0;
   let sparkTimer = 0;
   let aimTimer = 0; // seconds the aim pose still holds after a shot
-  let hits = 0; // rounds that landed on the dummy or a patrol car
+  let hits = 0; // rounds that landed on the dummy, a patrol car or a pedestrian
   let shotsFired = 0;
+  let shotX = 0; // where the last round landed (ground point, for scares)
+  let shotZ = 0;
 
-  /** Where the round leaves Raka: his chest, a little ahead of his body. */
+  /** Where the round leaves Raka: his chest, a little ahead of his body.
+   * Chest height (1.15) matters: the ray is level, so at this height it
+   * meets a pedestrian's torso and a car's cabin; any higher and it slips
+   * through the gap between a pedestrian's shoulders and head. */
   function muzzlePosition(out) {
     forward.set(Math.sin(hero.yaw), 0, Math.cos(hero.yaw));
     out.copy(hero.group.position);
-    out.y = 1.35;
+    out.y = 1.15;
     out.addScaledVector(forward, 0.55);
     return out;
   }
@@ -168,18 +177,24 @@ export function createCombat(scene, hero, police, onHit) {
     get reserve() { return reserve; },
     /** True while a reload is running. */
     get reloading() { return reloading; },
-    /** Rounds that landed on the dummy or a patrol car. */
+    /** Rounds that landed on the dummy, a patrol car or a pedestrian. */
     get hits() { return hits; },
     /** Rounds fired so far. */
     get shotsFired() { return shotsFired; },
+    /** Where the last round landed, x (a scare for pedestrians nearby). */
+    get shotX() { return shotX; },
+    /** Where the last round landed, z (a scare for pedestrians nearby). */
+    get shotZ() { return shotZ; },
     /** True while Raka should hold the aim pose (just after a shot). */
     get aiming() { return aimTimer > 0; },
 
     /**
      * Fire one round, if the magazine is not empty, the reload is not
      * running and the cooldown has passed. The ray decides what it hit:
-     * the dummy or a patrol car counts as a hit (and a patrol car hit is
-     * a crime, so the heat goes up a star); anything else just sparks.
+     * the dummy, a patrol car or a pedestrian counts as a hit (a patrol
+     * car hit or a pedestrian hit is a crime, so the heat goes up a star);
+     * anything else just sparks. The landing point is kept, so the game
+     * loop can scare the pedestrians standing near it.
      */
     shoot() {
       if (reloading || cooldown > 0 || mag <= 0) return false;
@@ -196,6 +211,8 @@ export function createCombat(scene, hero, police, onHit) {
       const found = raycaster.intersectObjects(scene.children, true);
       const hit = found.length > 0 ? found[0] : null;
       hitPoint.copy(hit ? hit.point : muzzle.clone().addScaledVector(forward, RANGE));
+      shotX = hitPoint.x;
+      shotZ = hitPoint.z;
       showShot(muzzle, hitPoint);
       burstSpark(hitPoint);
 
@@ -203,17 +220,26 @@ export function createCombat(scene, hero, police, onHit) {
         // Walk up from the mesh that was hit to find what it belongs to.
         let node = hit.object;
         let kind = null;
+        let npcRig = null;
         while (node) {
           if (node.userData.dummy) { kind = 'dummy'; break; }
           if (node.userData.policeCar) { kind = 'police'; break; }
+          if (node.userData.npc) { kind = 'npc'; npcRig = node.userData.npc; break; }
           node = node.parent;
         }
-        if (kind === 'dummy' || kind === 'police') {
+        if (kind === 'dummy' || kind === 'police' || kind === 'npc') {
           hits += 1;
           if (kind === 'police') police.noteShooting();
+          if (kind === 'npc') {
+            police.noteAssault();
+            npcRig.fleeFrom(muzzle.x, muzzle.z);
+          }
           if (onHit) onHit();
         }
       }
+      // Every round, hit or miss, can scare the street: the pedestrians
+      // standing near where it landed run away from it.
+      if (onShot) onShot(shotX, shotZ);
       return true;
     },
 

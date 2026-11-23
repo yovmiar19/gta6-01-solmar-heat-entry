@@ -60,19 +60,23 @@ export function createHud() {
       showSpeed(Math.round(speed * 3.6), FOOT_TOP_KMH);
     },
     /**
-     * Refresh the driving readouts. `speed` is the car's signed speed in
-     * metres per second (negative while reversing).
+     * Refresh the driving readouts. `speed` is the vehicle's signed speed
+     * in metres per second (negative while reversing); `vehicleName` is
+     * the ride Raka is in ("Sunset GT", "Sedan", "Motor", "Truk", "Bus").
+     * The name rides in the cache key, so swapping rides refreshes the
+     * readouts even while the driving state stays the same.
      */
-    updateDriving(speed) {
+    updateDriving(speed, vehicleName = 'Sunset GT') {
       const state = Math.abs(speed) < 0.3 ? 'PARKED' : speed < 0 ? 'REVERSING' : 'DRIVING';
-      if (state !== lastState) {
+      const key = `${state}|${vehicleName}`;
+      if (key !== lastState) {
         modeEl.textContent = 'DRIVING';
         stateEl.textContent = state;
-        speedWhatEl.textContent = 'Sunset GT';
+        speedWhatEl.textContent = vehicleName;
         statusEl.textContent = state === 'PARKED'
-          ? 'Raka is parked in the Sunset GT in Solmar Bay.'
-          : `Raka is ${state.toLowerCase()} the Sunset GT through Solmar Bay.`;
-        lastState = state;
+          ? `Raka is parked in the ${vehicleName} in Solmar Bay.`
+          : `Raka is ${state.toLowerCase()} the ${vehicleName} through Solmar Bay.`;
+        lastState = key;
       }
       showSpeed(Math.round(Math.abs(speed) * 3.6), CAR_TOP_KMH);
     },
