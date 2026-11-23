@@ -26,10 +26,14 @@ import { createHud } from './hud.js';
 import { createRadar } from './radar.js';
 import { createMissions } from './missions.js';
 import { createEnvironment } from './environment.js';
+import { createWater } from './water.js';
 import { stageShot } from './shots.js';
 
 const WALK_SPEED = 3.2; // metres per second
 const RUN_SPEED = 5.8;
+const SWIM_SPEED = 2.2; // a steady crawl, metres per second
+const FAST_SWIM_SPEED = 4.2; // sprint-swimming on Shift
+const DROWN_GRACE = 5; // seconds of warning before an exhausted swimmer goes under
 const ENTER_RANGE = 4; // how close Raka must be to get in the car
 const FOOT_CAM_DISTANCE = 5.5;
 const CAR_CAM_DISTANCE = 8.5;
@@ -71,6 +75,7 @@ scene.add(car.group);
 const police = createPolice(scene, world);
 const traffic = createTraffic(scene, world, police);
 const env = createEnvironment(scene, world); // step 8: day-night, weather, lights
+const water = createWater(scene, world); // step 9: beach, sea, boats, swim
 
 const chase = createChaseCamera(camera);
 const hud = createHud();
@@ -86,7 +91,12 @@ let speed = 0; // Raka's ground speed on foot, smoothed toward the target
 let vehicle = null; // the ride Raka is driving (his Sunset GT or a stolen one)
 let vehicleName = 'Sunset GT'; // the ride's name, shown on the HUD
 let ridingBike = false; // true while Raka rides the motorbike in the open
+let ridingBoat = false; // true while Raka stands at a boat's helm, in the open
 let aiming = false; // true while Raka holds right mouse on foot (aim mode)
+// Step 9: drowning — out of stamina in deep water, a 5-second grace to
+// swim back before he goes under and washes back up on the beach.
+let drowned = false; // the WASTED that just happened was a drowning
+let drownTimer = 0; // seconds of grace left while exhausted in deep water
 
 // --- busted state -----------------------------------------------------------
 // A patrol car pinned Raka: controls freeze, the BUSTED screen goes up, and
@@ -115,6 +125,7 @@ function startWasted() {
 function respawn() {
   driving = false;
   ridingBike = false;
+  ridingBoat = false;
   aiming = false;
   chase.setTargetFov(FOV_NORMAL);
   hud.setAiming(false);
@@ -123,14 +134,20 @@ function respawn() {
   car.halt();
   car.group.position.set(2.2, 0, 4.5);
   car.setHeading(Math.PI);
-  hero.group.position.set(0, 0, 10);
+  // Step 9: a drowning washes Raka back up on the beach, not the avenue.
+  const spawn = drowned ? water.beachSpawn : { x: 0, z: 10 };
+  hero.group.position.set(spawn.x, 0, spawn.z);
   hero.group.visible = true;
   hero.face(Math.PI);
   hero.group.rotation.y = Math.PI;
   speed = 0;
+  drowned = false;
+  drownTimer = 0;
+  hud.showDrownWarning(false);
   lastVehicleHits = car.hits;
   police.reset();
   traffic.reset();
+  water.reset();
   missions.reset();
   vitals.reset();
   combat.reset();
@@ -147,7 +164,7 @@ function respawn() {
   wastedTimer = 0;
 }
 
-/** The nearest ride Raka can get into: his Sunset GT or a civilian one. */
+/** The nearest ride Raka can get into: his Sunset GT, a civilian one, or a boat. */
 function nearestRide() {
   const hx = hero.group.position.x;
   const hz = hero.group.position.z;
@@ -157,6 +174,9 @@ function nearestRide() {
   if (dCar < bestDist) { best = car; bestDist = dCar; }
   const t = traffic.nearestEnterable(hx, hz, ENTER_RANGE);
   if (t && t.dist < bestDist) { best = t.vehicle; bestDist = t.dist; }
+  // Step 9: the boats moor off the beach — close enough to wade out to.
+  const b = water.nearestBoat(hx, hz, ENTER_RANGE);
+  if (b && b.dist < bestDist) { best = b.vehicle; bestDist = b.dist; }
   return best;
 }
 
@@ -172,13 +192,21 @@ function enterVehicle(ride) {
     police.noteTheft();
   }
   // A motorbike has no cabin: Raka stays visible, seated on it (see the
-  // driving branch, which puts him on the seat every frame). Every other
+  // driving branch, which puts him on the seat every frame). A boat is open
+  // too: he stands at the helm, in the open, turning with it. Every other
   // ride hides him inside, as before.
   if (ride.type === 'Motorbike') {
     ridingBike = true;
+    ridingBoat = false;
     hero.group.visible = true;
+  } else if (ride.type === 'Boat') {
+    ridingBoat = true;
+    ridingBike = false;
+    hero.group.visible = true;
+    hero.stand(); // limbs neutral at the helm (the walk pose must not follow him)
   } else {
     ridingBike = false;
+    ridingBoat = false;
     hero.group.visible = false;
   }
   chase.setDistance(ride.camDistance ?? CAR_CAM_DISTANCE);
@@ -188,15 +216,19 @@ function enterVehicle(ride) {
 function exitVehicle() {
   driving = false;
   ridingBike = false;
+  ridingBoat = false;
   vehicle.halt();
   speed = 0;
   // Step out beside the ride (its right side) and face the way it was going.
+  // Off a boat he steps out into the water, so the south clamp is the far
+  // edge of the bay, not the city line (which would teleport him ashore).
+  const zMax = vehicle.type === 'Boat' ? water.seaMaxZ : world.bounds;
   const rightX = Math.cos(vehicle.yaw);
   const rightZ = -Math.sin(vehicle.yaw);
   hero.group.position.set(
     Math.max(-world.bounds, Math.min(world.bounds, vehicle.group.position.x + rightX * 2.4)),
     0,
-    Math.max(-world.bounds, Math.min(world.bounds, vehicle.group.position.z + rightZ * 2.4)),
+    Math.max(-world.bounds, Math.min(zMax, vehicle.group.position.z + rightZ * 2.4)),
   );
   hero.group.visible = true;
   hero.stand(); // limbs back to neutral (a rider's bent pose must not follow him on foot)
@@ -207,7 +239,7 @@ function exitVehicle() {
   hud.setPrompt(null);
 }
 
-/** The radar's inputs: Raka, the heat, the street and the mission target. */
+/** The radar's inputs: Raka, the heat, the street, the boats and the mission target. */
 function radarState() {
   return {
     x: hero.group.position.x,
@@ -216,6 +248,7 @@ function radarState() {
     police: police.patrolPositions,
     heli: police.heliPos,
     vehicles: traffic.vehicles,
+    boats: water.boats,
     npcs: traffic.npcs,
     sunset: { x: car.group.position.x, z: car.group.position.z },
     target: missions.target,
@@ -276,6 +309,12 @@ function step(dt) {
     frozen,
   });
   hud.setClock(env.hours, env.phase, env.weather);
+  // Step 9: the waves roll and the parked boats bob (a staged screenshot
+  // frame holds the sea still, like it holds the sky).
+  water.update(dt, {
+    driven: driving && vehicle && vehicle.type === 'Boat' ? vehicle : null,
+    frozen,
+  });
   if (frozen) {
     // Hold the staged frame: camera exactly on its spot. The radar still
     // draws (it is part of the frame) and the markers still pulse.
@@ -320,6 +359,15 @@ function step(dt) {
       );
       hero.ride(vehicle.yaw);
     }
+    // On a boat Raka stands at the helm in the open, riding the swell with it.
+    if (ridingBoat) {
+      hero.group.position.set(
+        vehicle.group.position.x,
+        vehicle.group.position.y + 0.1,
+        vehicle.group.position.z,
+      );
+      hero.group.rotation.y = vehicle.yaw;
+    }
     // The camera eases in BEHIND the ride: its yaw is the car's heading
     // plus half a turn, so it sits on the side opposite to where the car
     // faces and looks the way the car is going. (The car's yaw is the
@@ -336,10 +384,33 @@ function step(dt) {
     const f = input.forward;
     const s = input.strafe;
     const moving = input.moving;
+    // Step 9: the water — ankle-deep wading is slow, waist-deep slower,
+    // and past the swim line Raka swims (a crawl stroke, head above the
+    // water). Shift is a fast swim, and it spends stamina like a run.
+    const depth = water.depthAt(hero.group.position.x, hero.group.position.z);
+    const swimming = depth > 1.2;
+    const wading = !swimming && depth > 0.3;
+    const fastSwim = swimming && input.running && vitals.canRun;
     // Running needs stamina: run dry and he is winded, walking only until
-    // it has come back a little.
+    // it has come back a little. Treading water exhausted spends stamina
+    // the same way and never lets it come back while he is still deep.
     const running = input.running && vitals.canRun;
-    vitals.update(dt, running && moving);
+    const exhaustedSwim = swimming && vitals.stamina <= 0;
+    vitals.update(dt, (running && moving) || (fastSwim && moving) || exhaustedSwim);
+
+    // Out of stamina in deep water: a 5-second grace to swim back to the
+    // shallows (the warning counts it down), then he goes under.
+    if (exhaustedSwim) {
+      drownTimer += dt;
+      hud.showDrownWarning(true, DROWN_GRACE - drownTimer);
+      if (drownTimer >= DROWN_GRACE) {
+        drowned = true;
+        vitals.damage(100);
+      }
+    } else {
+      drownTimer = 0;
+      hud.showDrownWarning(false);
+    }
 
     // Camera-relative move direction on the ground.
     const forward = chase.forward();
@@ -349,31 +420,43 @@ function step(dt) {
     const length = Math.hypot(moveX, moveZ);
     if (length > 1) { moveX /= length; moveZ /= length; }
 
-    // Ease toward the target speed (walk, run, or stop).
-    const target = moving ? (running ? RUN_SPEED : WALK_SPEED) : 0;
+    // Ease toward the target speed (walk, run, wade, swim, or stop).
+    const target = !moving ? 0
+      : swimming ? (fastSwim ? FAST_SWIM_SPEED : SWIM_SPEED)
+      : wading ? (running ? RUN_SPEED * 0.5 : WALK_SPEED * 0.5)
+      : (running ? RUN_SPEED : WALK_SPEED);
     speed += (target - speed) * Math.min(1, dt * 8);
     if (speed < 0.05) speed = 0;
 
     if (moving && speed > 0.05) {
       hero.group.position.x += moveX * speed * dt;
       hero.group.position.z += moveZ * speed * dt;
-      // Stay inside the city.
+      // Stay inside the city — and the bay, south to the far edge of the sea.
       hero.group.position.x = Math.max(-world.bounds, Math.min(world.bounds, hero.group.position.x));
-      hero.group.position.z = Math.max(-world.bounds, Math.min(world.bounds, hero.group.position.z));
+      hero.group.position.z = Math.max(-world.bounds, Math.min(water.seaMaxZ, hero.group.position.z));
       // Face where he moves.
       hero.face(Math.atan2(moveX, moveZ));
     }
 
-    hero.update(dt, speed, moving);
+    if (swimming) {
+      // Head above the water, bobbing on the swell; the crawl replaces the walk.
+      hero.group.position.y = -0.75 + Math.sin(performance.now() / 1000 * 2) * 0.05;
+      hero.swim(dt, fastSwim);
+      hud.updateSwim(speed, fastSwim);
+    } else {
+      hero.group.position.y = 0;
+      hero.update(dt, speed, moving);
+      hud.updateFoot(speed, moving, running);
+    }
     chase.update(dt, hero.group.position, false);
-    hud.updateFoot(speed, moving, running);
 
     // --- aim: hold right mouse and Raka bids down the sights ----------------
     // The camera zooms in, the crosshair comes up, and Raka turns to face
     // where the camera looks, so a round goes where the crosshair points.
     // (The camera's yaw is the direction from Raka to the camera, so the
-    // way he must face is the camera's yaw plus half a turn.)
-    aiming = input.aiming;
+    // way he must face is the camera's yaw plus half a turn.) No aiming or
+    // shooting while swimming: both hands are busy staying afloat.
+    aiming = swimming ? false : input.aiming;
     if (aiming) hero.face(chase.yaw + Math.PI);
     chase.setTargetFov(aiming ? FOV_AIM : FOV_NORMAL);
     hud.setAiming(aiming);
@@ -382,8 +465,8 @@ function step(dt) {
     // A round landing near a pedestrian scares them into running (the combat
     // rig tells the street where it landed, through its onShot callback).
     // An aimed round flies nearly true; a hip-fired one wobbles a little.
-    if (input.takeShot()) combat.shoot(aiming);
-    if (input.takeReload()) combat.reload();
+    if (!swimming && input.takeShot()) combat.shoot(aiming);
+    if (!swimming && input.takeReload()) combat.reload();
 
     // --- a ride: near one, E gets in -----------------------------------------
     const ride = nearestRide();
@@ -407,7 +490,9 @@ function step(dt) {
   // Speeding and smashing into buildings earn stars; the patrol cars answer
   // them, and a car that pins Raka ends the run with BUSTED.
   if (driving) {
-    police.noteSpeeding(dt, Math.abs(vehicle.speed) > SPEED_LIMIT);
+    // The speed limit is a road rule: a boat at full throttle on open
+    // water is not speeding, so it never earns a star for it.
+    if (vehicle.type !== 'Boat') police.noteSpeeding(dt, Math.abs(vehicle.speed) > SPEED_LIMIT);
     if (vehicle.hits > lastVehicleHits) {
       lastVehicleHits = vehicle.hits;
       police.noteCollision();
@@ -515,6 +600,22 @@ window.__solmar = {
   /** Step 8: the lightning flash (1 at a strike, decaying to 0). */
   get envLightning() { return env.lightning; },
   env,
+  /** Step 9: true while Raka swims in deep water. */
+  get swimming() { return water.depthAt(hero.group.position.x, hero.group.position.z) > 1.2; },
+  /** Step 9: the depth of the water where Raka stands (0 on dry land). */
+  get waterDepth() { return water.depthAt(hero.group.position.x, hero.group.position.z); },
+  /** Step 9: true while the drown warning is counting down. */
+  get drowning() { return drownTimer > 0; },
+  /** Step 9: true while Raka stands at a boat's helm, in the open. */
+  get ridingBoat() { return ridingBoat; },
+  /** Step 9: the boats' spots, for the test harness. */
+  get boats() {
+    return water.boats.map((b) => ({
+      name: b.name, x: b.group.position.x, z: b.group.position.z,
+      yaw: b.yaw, speed: b.speed, stolen: b.stolen,
+    }));
+  },
+  water,
   get trafficVehicles() {
     return traffic.vehicles.map((v) => ({
       name: v.name, type: v.type,
@@ -601,6 +702,40 @@ window.__solmar = {
     setWeather(name) { return env.setWeather(name); },
     /** Step 8: turn the weather on to the next one. */
     cycleWeather() { return env.cycleWeather(); },
+    /** Step 9: put Raka on the beach, facing the sea (south). */
+    toBeach() {
+      if (driving) return false;
+      hero.group.position.set(0, 0, water.beachSpawn.z);
+      hero.face(0);
+      hero.group.rotation.y = 0;
+      speed = 0;
+      return true;
+    },
+    /** Step 9: put Raka in deep water, facing south (out to sea). */
+    toWater() {
+      if (driving) return false;
+      hero.group.position.set(0, 0, 100);
+      hero.face(0);
+      hero.group.rotation.y = 0;
+      speed = 0;
+      return true;
+    },
+    /** Step 9: put Raka beside the named boat ('Speedboat' | 'Fishing Boat'). */
+    toBoat(name) {
+      if (driving) return false;
+      const b = water.boats.find((boat) => boat.name === name);
+      if (!b) return false;
+      hero.group.position.set(b.group.position.x + 2.4, 0, b.group.position.z);
+      hero.group.visible = true;
+      hero.face(Math.atan2(
+        b.group.position.x - hero.group.position.x,
+        b.group.position.z - hero.group.position.z,
+      ));
+      speed = 0;
+      return true;
+    },
+    /** Step 9: set the stamina at once (the drown check drains it). */
+    setStamina(n) { vitals.setStamina(n); },
     /** Put Raka beside the mission start marker, facing it. */
     toMissionStart() {
       if (driving) return false;

@@ -13,9 +13,14 @@ const SIZE = 300; // the canvas backing store, drawn at 150px on the page
 const RANGE = 60; // the map covers x and z from -RANGE to +RANGE
 const SCALE = SIZE / (RANGE * 2); // pixels per metre
 
-/** Turn a world position into radar pixels (north-up). */
+/** Turn a world position into radar pixels (north-up). The land map covers
+ * z = -60 to +60; below it a 20px band is the sea (z = 60 to 120), so the
+ * beach and the boats still read on the map instead of falling off it. */
 function toRadar(x, z) {
-  return { px: (x + RANGE) * SCALE, py: (z + RANGE) * SCALE };
+  const py = z <= RANGE
+    ? (z + RANGE) * SCALE
+    : SIZE - 20 + ((z - RANGE) / 60) * 20;
+  return { px: (x + RANGE) * SCALE, py };
 }
 
 export function createRadar() {
@@ -76,6 +81,12 @@ export function createRadar() {
       for (const z of [-30, 0, 30]) {
         ctx.fillRect(0, (z - 4 + RANGE) * SCALE, SIZE, 8 * SCALE);
       }
+      // The sea: a blue band along the bottom edge, with a foam line where
+      // the sand meets it. Boats and a swimming Raka plot inside the band.
+      ctx.fillStyle = 'rgba(30, 111, 158, 0.85)';
+      ctx.fillRect(0, SIZE - 20, SIZE, 20);
+      ctx.fillStyle = 'rgba(244, 251, 255, 0.7)';
+      ctx.fillRect(0, SIZE - 20, SIZE, 2);
       // A gold border and an N for north.
       ctx.strokeStyle = 'rgba(242, 201, 76, 0.55)';
       ctx.lineWidth = 2;
@@ -109,6 +120,10 @@ export function createRadar() {
       if (state.sunset) dot(state.sunset.x, state.sunset.z, 4, '#e8641e');
       for (const v of state.vehicles) {
         dot(v.group.position.x, v.group.position.z, 4, '#9ac8e8');
+      }
+      // The boats are cyan, so they read apart from the street rides.
+      for (const b of state.boats ?? []) {
+        dot(b.group.position.x, b.group.position.z, 4, '#35e0ff');
       }
 
       // --- the heat: patrol cars red, the helicopter a red ring ------------

@@ -35,6 +35,12 @@ export function createVitals() {
       health = Math.max(0, health - amount);
     },
 
+    /** Set the stamina at once (the test harness drains it for the drown check). */
+    setStamina(value) {
+      stamina = Math.max(0, Math.min(MAX_STAMINA, value));
+      if (stamina > 0) winded = false;
+    },
+
     /**
      * One frame: drain the stamina while running, grow it back otherwise.
      * `running` says he is running right now (moving, Shift held, allowed).

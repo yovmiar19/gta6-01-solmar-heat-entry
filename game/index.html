@@ -93,6 +93,11 @@
   #ammo-num.empty { color: #ff4d3d; }
   #ammo-label { font-size: 10px; letter-spacing: 0.14em; color: #f2c94c; font-weight: 700; }
 
+  /* Drowning warning, top-centre under the mission banner. Hidden until
+     Raka runs out of stamina in deep water. */
+  #drown-warning { position: absolute; top: 104px; left: 50%; transform: translateX(-50%); display: none; font-size: 15px; font-weight: 800; color: #ff4d3d; background: rgba(20, 14, 8, 0.78); border: 1px solid rgba(255, 77, 61, 0.6); border-radius: 6px; padding: 7px 14px; white-space: nowrap; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85); animation: drownblink 0.6s steps(2) infinite; }
+  @keyframes drownblink { 50% { opacity: 0.45; } }
+
   /* Action prompt ("Press E to enter the Sunset GT"), above the hint. */
   #car-prompt { position: absolute; bottom: 34px; left: 50%; transform: translateX(-50%); display: none; font-size: 14px; font-weight: 700; color: #ffd97a; background: rgba(20, 14, 8, 0.72); border: 1px solid rgba(242, 201, 76, 0.5); border-radius: 6px; padding: 6px 12px; white-space: nowrap; }
   #car-prompt b { color: #fff; }
@@ -109,8 +114,8 @@
 <div id="hud">
   <div id="title-panel" class="panel">
     <div class="name">SOLMAR <span class="heat">HEAT</span></div>
-    <div class="place">SOLMAR BAY · GOLDEN HOUR</div>
-    <div class="step">STEP 8 — SIANG-MALAM + CUACA (DAY-NIGHT, WEATHER, LIGHTS)</div>
+    <div class="place">SOLMAR BAY</div>
+    <div class="step">STEP 9 — PANTAI + LAUT + PERAHU (BEACH, SEA, BOAT, SWIM)</div>
   </div>
   <div id="clock-box">
     <div id="clock">17:30</div>
@@ -127,6 +132,7 @@
     <div id="cash-line">CASH <b id="cash-num">$0</b></div>
   </div>
   <div id="mission-banner"></div>
+  <div id="drown-warning">⚠ STAMINA GONE — SWIM BACK TO SHORE! <span id="drown-num">5</span>s</div>
   <div id="wanted-box" class="panel">
     <div class="label">WANTED</div>
     <div id="wanted-stars">☆☆☆☆☆</div>
@@ -146,7 +152,7 @@
   <div id="hitmarker">✕</div>
   <div id="crosshair"><span class="tick h-left"></span><span class="tick h-right"></span><span class="tick v-top"></span><span class="tick v-bottom"></span><span class="dot"></span></div>
   <div id="car-prompt"></div>
-  <div id="hint"><b>WASD</b> move &nbsp;·&nbsp; <b>Shift</b> run &nbsp;·&nbsp; <b>E</b> enter car &nbsp;·&nbsp; <b>right-click</b> aim &nbsp;·&nbsp; <b>click</b> shoot &nbsp;·&nbsp; <b>R</b> reload &nbsp;·&nbsp; <b>C</b> weather &nbsp;·&nbsp; <b>T</b> time +2h &nbsp;·&nbsp; <b>drag</b> to look around &nbsp;·&nbsp; <b>glowing marker</b> starts a mission</div>
+  <div id="hint"><b>WASD</b> move &nbsp;·&nbsp; <b>Shift</b> run / fast swim &nbsp;·&nbsp; <b>E</b> enter car or boat &nbsp;·&nbsp; <b>right-click</b> aim &nbsp;·&nbsp; <b>click</b> shoot &nbsp;·&nbsp; <b>R</b> reload &nbsp;·&nbsp; <b>C</b> weather &nbsp;·&nbsp; <b>T</b> time +2h &nbsp;·&nbsp; <b>drag</b> to look around &nbsp;·&nbsp; <b>walk south</b> to the beach &nbsp;·&nbsp; <b>glowing marker</b> starts a mission</div>
   <div id="busted-overlay">
     <div id="busted-text">BUSTED</div>
     <div id="busted-sub">Raka was caught — the heat is off... for now.</div>

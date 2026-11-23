@@ -37,6 +37,9 @@ export function createHud() {
   const missionBannerEl = document.getElementById('mission-banner');
   const clockEl = document.getElementById('clock');
   const clockSubEl = document.getElementById('clock-sub');
+  const drownEl = document.getElementById('drown-warning');
+  const drownNumEl = document.getElementById('drown-num');
+  let lastDrown = -1;
   let lastClock = '';
   let lastState = '';
   let lastWanted = -1;
@@ -198,6 +201,38 @@ export function createHud() {
       if (cash === lastCash) return;
       lastCash = cash;
       cashNumEl.textContent = `$${cash.toLocaleString('en-US')}`;
+    },
+    /**
+     * Refresh the swimming readouts. `speed` is Raka's swim speed in metres
+     * per second; `fast` says he is sprint-swimming on Shift. The pace bar
+     * tops out at 15 km/h, a fast swimmer's pace.
+     */
+    updateSwim(speed, fast) {
+      const state = fast ? 'FAST SWIM' : 'SWIMMING';
+      if (state !== lastState) {
+        modeEl.textContent = 'SWIMMING';
+        stateEl.textContent = state;
+        speedWhatEl.textContent = 'Raka';
+        statusEl.textContent = 'Raka is swimming in Solmar Bay.';
+        lastState = state;
+      }
+      showSpeed(Math.round(speed * 3.6), 15);
+    },
+    /**
+     * Show or hide the drowning warning ("STAMINA GONE — SWIM BACK! 4s"):
+     * Raka is out of stamina in deep water, and the seconds left before he
+     * goes under. It only rewrites when the count changes.
+     */
+    showDrownWarning(show, secondsLeft = 0) {
+      const shown = show ? Math.ceil(secondsLeft) : -1;
+      if (shown === lastDrown) return;
+      lastDrown = shown;
+      if (show) {
+        drownNumEl.textContent = String(shown);
+        drownEl.style.display = 'block';
+      } else {
+        drownEl.style.display = 'none';
+      }
     },
     /**
      * Refresh the CLOCK (top-right): the game time ("14:30") and, under it,

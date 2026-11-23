@@ -117,6 +117,27 @@ export function createProtagonist() {
       armL.rotation.x = -1.15; armR.rotation.x = -1.15;
       body.rotation.x = 0.12;
     },
+    /**
+     * Swim: a front crawl — the body leans forward, the arms reach overhead
+     * in turns and the legs kick behind. `fast` strokes harder. The game
+     * loop calls this instead of update() while Raka is in deep water, so
+     * the walk animation never fights it.
+     */
+    swim(dt, fast) {
+      walkPhase += dt * (fast ? 9 : 6);
+      const stroke = Math.sin(walkPhase);
+      const kick = Math.sin(walkPhase * 2);
+      // Arms overhead in turns, like a crawl stroke.
+      armL.rotation.x = -2.2 + stroke * 0.6;
+      armR.rotation.x = -2.2 - stroke * 0.6;
+      // Legs kick behind him.
+      legL.rotation.x = kick * 0.5;
+      legR.rotation.x = -kick * 0.5;
+      // A slight forward lean, and the turn still eases toward the target.
+      yaw += angleDelta(yaw, targetYaw) * Math.min(1, dt * 10);
+      group.rotation.y = yaw;
+      body.rotation.x = 0.3;
+    },
     /** Back on his feet: limbs and lean to neutral (the idle update settles them too). */
     stand() {
       legL.rotation.x = 0; legR.rotation.x = 0;
