@@ -67,6 +67,7 @@ export function createProtagonist() {
   let walkPhase = 0;
   let idleTime = 0;
   let aiming = false; // the right arm points forward (shooting), held by the game loop
+  let punchTimer = 0; // seconds left in a punch swing (step 10)
 
   /** Shortest signed angle from `from` to `to` (so the turn never spins the long way). */
   function angleDelta(from, to) {
@@ -89,6 +90,10 @@ export function createProtagonist() {
       // animation never runs (the frozen frame); the live loop re-applies it
       // every frame anyway.
       if (on) armR.rotation.x = -1.5;
+    },
+    /** Throw a punch: the right arm swings forward for a third of a second (step 10). */
+    punch() {
+      punchTimer = 0.35;
     },
     /** True while Raka is holding the aim pose. */
     get aiming() { return aiming; },
@@ -148,33 +153,72 @@ export function createProtagonist() {
     },
     /**
      * Advance the animation. `speed` is the current ground speed (0 when idle);
-     * `moving` says whether a move key is held. Called every frame.
+     * `moving` says whether a move key is held. `air` says Raka is off the
+     * ground (a jump or a vault — the game loop owns his height then, so no
+     * step bob here); `vault` says the air pose is a vault, arms reaching
+     * forward and down over the obstacle, instead of a plain jump. Called
+     * every frame. `groundY` is the ground height under his feet (0 on the
+     * street, a crate's top while he stands on one): the step bob and the
+     * breathing bob ride on top of it, never under it.
      */
-    update(dt, speed, moving) {
+    update(dt, speed, moving, air = false, vault = false, groundY = 0) {
       // Turn smoothly toward the target facing.
       yaw += angleDelta(yaw, targetYaw) * Math.min(1, dt * 10);
       group.rotation.y = yaw;
+
+      // A punch swing overrides the right arm for a third of a second:
+      // out fast, back again, a sine over the swing's life.
+      let punchSwing = 0;
+      if (punchTimer > 0) {
+        punchTimer -= dt;
+        const phase = 1 - Math.max(0, punchTimer) / 0.35;
+        punchSwing = -1.9 * Math.sin(phase * Math.PI);
+      }
+
+      if (air) {
+        // Off the ground: legs tucked under him, body leaning forward. A
+        // vault reaches both arms forward and down, over the obstacle; a
+        // plain jump holds the arms out to the sides for balance. The game
+        // loop owns his height while he is airborne: no bob here.
+        legL.rotation.x = -1.0;
+        legR.rotation.x = -0.5;
+        if (vault) {
+          armL.rotation.x = -1.2;
+          armR.rotation.x = punchTimer > 0 ? punchSwing : -1.2;
+          armL.rotation.z = 0; armR.rotation.z = 0;
+          body.rotation.x = 0.25;
+        } else {
+          armL.rotation.x = -0.4;
+          armR.rotation.x = punchTimer > 0 ? punchSwing : -0.4;
+          armL.rotation.z = 0.5; armR.rotation.z = -0.5;
+          body.rotation.x = 0.08;
+        }
+        return;
+      }
+      // Back on the ground: clear any jump pose leftovers.
+      armL.rotation.z = 0; armR.rotation.z = 0;
 
       if (moving && speed > 0.1) {
         walkPhase += dt * (speed > 5 ? 11 : 7.5);
         const swing = Math.min(1, speed / 6);
         legL.rotation.x = Math.sin(walkPhase) * 0.55 * swing;
         legR.rotation.x = -Math.sin(walkPhase) * 0.55 * swing;
-        armL.rotation.x = -Math.sin(walkPhase) * 0.45 * swing;
-        // Aiming holds the right arm forward (the pistol); otherwise it swings.
-        armR.rotation.x = aiming ? -1.5 : Math.sin(walkPhase) * 0.45 * swing;
+        armL.rotation.x = punchTimer > 0 ? punchSwing * 0.35 : -Math.sin(walkPhase) * 0.45 * swing;
+        // Aiming holds the right arm forward (the pistol); a punch swings
+        // it instead; otherwise it swings with the walk.
+        armR.rotation.x = punchTimer > 0 ? punchSwing : aiming ? -1.5 : Math.sin(walkPhase) * 0.45 * swing;
         // A slight forward lean at a run.
         body.rotation.x = speed > 5 ? 0.1 : 0.03;
-        // A small vertical bob with each step.
-        group.position.y = Math.abs(Math.sin(walkPhase)) * 0.05;
+        // A small vertical bob with each step, on top of the ground height.
+        group.position.y = groundY + Math.abs(Math.sin(walkPhase)) * 0.05;
       } else {
         // Idle: limbs settle, breathing bob. The aim pose holds through it.
         idleTime += dt;
         legL.rotation.x *= 0.8; legR.rotation.x *= 0.8;
-        armL.rotation.x *= 0.8;
-        armR.rotation.x = aiming ? -1.5 : armR.rotation.x * 0.8;
+        armL.rotation.x = punchTimer > 0 ? punchSwing * 0.35 : armL.rotation.x * 0.8;
+        armR.rotation.x = punchTimer > 0 ? punchSwing : aiming ? -1.5 : armR.rotation.x * 0.8;
         body.rotation.x *= 0.8;
-        group.position.y = Math.sin(idleTime * 2) * 0.015;
+        group.position.y = groundY + Math.sin(idleTime * 2) * 0.015;
       }
     },
   };

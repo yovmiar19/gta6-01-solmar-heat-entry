@@ -39,6 +39,7 @@ export function createHud() {
   const clockSubEl = document.getElementById('clock-sub');
   const drownEl = document.getElementById('drown-warning');
   const drownNumEl = document.getElementById('drown-num');
+  const diveEl = document.getElementById('dive-overlay');
   let lastDrown = -1;
   let lastClock = '';
   let lastState = '';
@@ -152,7 +153,8 @@ export function createHud() {
     /**
      * Refresh the WEAPON readouts: the weapon's NAME ("Pistol"), its TYPE
      * ("Handgun") and the BULLET COUNT as magazine / reserve ("12 / 24").
-     * While a reload runs the count reads "RELOADING…".
+     * While a reload runs the count reads "RELOADING…". The fists never
+     * run out, so their count reads "∞".
      */
     setWeapon(name, type, mag, reserve, reloading) {
       const key = `${name}|${type}`;
@@ -161,7 +163,7 @@ export function createHud() {
         weaponTypeEl.textContent = type;
         lastWeapon = key;
       }
-      const ammo = reloading ? 'RELOADING…' : `${mag} / ${reserve}`;
+      const ammo = reloading ? 'RELOADING…' : mag === '∞' ? '∞' : `${mag} / ${reserve}`;
       if (ammo !== lastAmmo) {
         ammoEl.textContent = ammo;
         ammoEl.classList.toggle('empty', !reloading && mag === 0);
@@ -249,6 +251,13 @@ export function createHud() {
       lastClock = key;
       clockEl.textContent = text;
       clockSubEl.textContent = `${icon} ${phase} · ${weather}`;
+    },
+    /**
+     * Show or hide the underwater tint (step 10): Raka is diving below the
+     * surface, so the whole screen goes blue until he comes back up.
+     */
+    showDive(on) {
+      if (diveEl) diveEl.style.display = on ? 'block' : 'none';
     },
     /**
      * Flash the mission banner across the top of the screen ("MISSION

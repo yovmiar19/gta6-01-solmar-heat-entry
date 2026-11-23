@@ -267,6 +267,74 @@ export function createWorld(scene, seed) {
   const palmSpots = [[-8, -20], [8, -42], [-8, 12], [8, 26], [-8, 48], [8, -4], [-8, -52], [8, 44]];
   for (const [x, z] of palmSpots) addPalm(x, z);
 
+  // --- vaultable obstacles (step 10) ----------------------------------------
+  // Low crates and seawall segments Raka can jump over, vault, or climb
+  // onto: wooden crates (0.9 m) tucked against the buildings at the
+  // sidewalks' edges, and low concrete seawalls (1.0 m) along the sand at
+  // the beach. Each carries its footprint and its top height, so the game
+  // loop can ask how high the ground is under Raka and push him out of
+  // one he walks into on foot.
+  const vaultables = []; // { x, z, hw, hd, h } — centre, half extents, top height
+  const crateMat = new THREE.MeshStandardMaterial({ color: 0x9a7a4e, roughness: 1 });
+  const crateTrimMat = new THREE.MeshStandardMaterial({ color: 0x6e5636, roughness: 1 });
+  function addCrate(x, z) {
+    const crate = new THREE.Group();
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 0.9, 1.2), crateMat);
+    body.position.y = 0.45; body.castShadow = true; body.receiveShadow = true;
+    crate.add(body);
+    const trim = new THREE.Mesh(new THREE.BoxGeometry(1.28, 0.1, 1.28), crateTrimMat);
+    trim.position.y = 0.86; trim.castShadow = true;
+    crate.add(trim);
+    crate.position.set(x, 0, z);
+    scene.add(crate);
+    vaultables.push({ x, z, hw: 0.6, hd: 0.6, h: 0.9 });
+  }
+  addCrate(-9, -12); addCrate(9, 18); addCrate(-9, 38); addCrate(9, -38);
+  const wallMat = new THREE.MeshStandardMaterial({ color: 0x8a8a82, roughness: 1 });
+  function addSeawall(x, z) {
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(4, 1.0, 1), wallMat);
+    wall.position.set(x, 0.5, z);
+    wall.castShadow = true; wall.receiveShadow = true;
+    scene.add(wall);
+    vaultables.push({ x, z, hw: 2, hd: 0.5, h: 1.0 });
+  }
+  addSeawall(-8, 76); addSeawall(8, 76);
+
+  /**
+   * The ground height at a spot: an obstacle's top while the spot is on
+   * one, the street (0) anywhere else.
+   */
+  function groundHeightAt(x, z) {
+    for (const v of vaultables) {
+      if (x >= v.x - v.hw && x <= v.x + v.hw && z >= v.z - v.hd && z <= v.z + v.hd) return v.h;
+    }
+    return 0;
+  }
+
+  /**
+   * Push a point out of a vaultable it has walked into (on foot, below the
+   * top): the nearest edge, so crates and walls are solid at street level.
+   * A point already on top of one is left alone.
+   */
+  function pushOutOfVaultable(x, z, radius) {
+    for (const v of vaultables) {
+      const cx = Math.max(v.x - v.hw, Math.min(v.x + v.hw, x));
+      const cz = Math.max(v.z - v.hd, Math.min(v.z + v.hd, z));
+      const dx = x - cx;
+      const dz = z - cz;
+      const d = Math.hypot(dx, dz);
+      if (d >= radius) continue;
+      if (d < 0.001) {
+        // Dead centre: shove out along the shorter axis.
+        if (v.hw < v.hd) return { x: v.x + (x >= v.x ? v.hw + radius : -v.hw - radius), z };
+        return { x, z: v.z + (z >= v.z ? v.hd + radius : -v.hd - radius) };
+      }
+      const push = (radius - d) / d;
+      return { x: x + dx * push, z: z + dz * push };
+    }
+    return { x, z };
+  }
+
   // --- clouds ---------------------------------------------------------------
   const cloudMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 1, transparent: true, opacity: 0.9 });
   const clouds = [];
@@ -286,6 +354,12 @@ export function createWorld(scene, seed) {
   return {
     bounds,
     colliders,
+    /** The low obstacles Raka can vault or climb (step 10): crates and seawalls. */
+    vaultables,
+    /** The ground height at a spot: an obstacle's top, or 0 on the street. */
+    groundHeightAt,
+    /** Push a point out of a vaultable it walked into (on foot, below the top). */
+    pushOutOfVaultable,
     /** The golden-hour sun, so the environment can move and dim it. */
     sun,
     /** The sky/ground fill light, so the environment can cool it at night. */

@@ -14,6 +14,9 @@ export function createInput(canvas, onOrbit) {
   let reloadQueued = false; // R pressed since the last takeReload() call
   let weatherQueued = false; // C pressed since the last takeWeather() call
   let timeQueued = false; // T pressed since the last takeTime() call
+  let jumpQueued = false; // Space pressed since the last takeJump() call (step 10)
+  let slot1Queued = false; // 1 pressed since the last takeSlot1() call (step 10)
+  let slot2Queued = false; // 2 pressed since the last takeSlot2() call (step 10)
   let aiming = false; // right mouse held since the last pointer event
   let dragging = false;
   let clickCandidate = false; // left button down, not yet released: may be a click
@@ -33,6 +36,9 @@ export function createInput(canvas, onOrbit) {
     if (event.code === 'KeyR' && !event.repeat) reloadQueued = true;
     if (event.code === 'KeyC' && !event.repeat) weatherQueued = true;
     if (event.code === 'KeyT' && !event.repeat) timeQueued = true;
+    if (event.code === 'Space' && !event.repeat) jumpQueued = true;
+    if (event.code === 'Digit1' && !event.repeat) slot1Queued = true;
+    if (event.code === 'Digit2' && !event.repeat) slot2Queued = true;
     keys.add(event.code);
   }
   function up(event) {
@@ -176,6 +182,24 @@ export function createInput(canvas, onOrbit) {
     takeTime() {
       const pressed = timeQueued;
       timeQueued = false;
+      return pressed;
+    },
+    /** True once per Space press, then clears: jump, vault, climb, or dive (step 10). */
+    takeJump() {
+      const pressed = jumpQueued;
+      jumpQueued = false;
+      return pressed;
+    },
+    /** True once per 1 press, then clears: select the Fists (step 10). */
+    takeSlot1() {
+      const pressed = slot1Queued;
+      slot1Queued = false;
+      return pressed;
+    },
+    /** True once per 2 press, then clears: select the Pistol (step 10). */
+    takeSlot2() {
+      const pressed = slot2Queued;
+      slot2Queued = false;
       return pressed;
     },
     /** True while the right mouse button is held: aim mode. */

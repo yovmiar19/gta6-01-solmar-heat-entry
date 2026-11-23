@@ -27,6 +27,7 @@ import { createRadar } from './radar.js';
 import { createMissions } from './missions.js';
 import { createEnvironment } from './environment.js';
 import { createWater } from './water.js';
+import { createMovement } from './movement.js';
 import { stageShot } from './shots.js';
 
 const WALK_SPEED = 3.2; // metres per second
@@ -82,7 +83,8 @@ const hud = createHud();
 const radar = createRadar();
 const missions = createMissions(scene);
 const vitals = createVitals();
-const combat = createCombat(scene, hero, police, () => hud.showHit(), (x, z) => traffic.noteShot(x, z));
+const combat = createCombat(scene, hero, police, traffic, () => hud.showHit(), (x, z) => traffic.noteShot(x, z));
+const movement = createMovement(); // step 10: jump, vault, climb
 const input = createInput(canvas, (dx, dy) => chase.orbit(dx, dy));
 
 // --- driving state ----------------------------------------------------------
@@ -97,6 +99,16 @@ let aiming = false; // true while Raka holds right mouse on foot (aim mode)
 // swim back before he goes under and washes back up on the beach.
 let drowned = false; // the WASTED that just happened was a drowning
 let drownTimer = 0; // seconds of grace left while exhausted in deep water
+// Step 10: diving — Space while swimming takes him under for a few
+// seconds (a blue tint covers the screen), then he surfaces on his own.
+// Diving never drowns him by itself: he surfaces while he still has
+// stamina, and the drown rule stays what it was (stamina gone, far out).
+let diving = false; // true while Raka is under the surface
+let diveTimer = 0; // seconds into the current dive
+let wasSwimming = false; // true last frame, so leaving the water can reset the vertical rig
+const DIVE_TIME = 4; // seconds a dive lasts before he surfaces on his own
+const DIVE_Y = -2.1; // how deep his feet sit while diving (well under the swell)
+const DIVE_STAMINA_FLOOR = 20; // stamina left when a dive ends itself early
 
 // --- busted state -----------------------------------------------------------
 // A patrol car pinned Raka: controls freeze, the BUSTED screen goes up, and
@@ -127,6 +139,11 @@ function respawn() {
   ridingBike = false;
   ridingBoat = false;
   aiming = false;
+  diving = false;
+  diveTimer = 0;
+  wasSwimming = false;
+  movement.reset();
+  hud.showDive(false);
   chase.setTargetFov(FOV_NORMAL);
   hud.setAiming(false);
   vehicle = null;
@@ -180,11 +197,37 @@ function nearestRide() {
   return best;
 }
 
+/**
+ * Step 10: the low obstacle a point ahead of Raka stands on, if any — a
+ * crate or a seawall close enough to vault or climb. `ahead` is how far
+ * in front of him to look (his facing), `margin` grows the footprint, so
+ * a vault can start a step early and a climb can start right against it.
+ */
+function vaultableAhead(ahead, margin) {
+  const fx = Math.sin(hero.yaw);
+  const fz = Math.cos(hero.yaw);
+  const px = hero.group.position.x + fx * ahead;
+  const pz = hero.group.position.z + fz * ahead;
+  for (const v of world.vaultables) {
+    if (
+      px >= v.x - v.hw - margin && px <= v.x + v.hw + margin
+      && pz >= v.z - v.hd - margin && pz <= v.z + v.hd + margin
+    ) return v;
+  }
+  return null;
+}
+
 function enterVehicle(ride) {
   driving = true;
   vehicle = ride;
   vehicleName = ride.name ?? 'Sunset GT';
   lastVehicleHits = ride.hits;
+  // A dive ends at the helm: he is out of the water now.
+  if (diving) {
+    diving = false;
+    diveTimer = 0;
+    hud.showDive(false);
+  }
   // Taking a civilian ride is theft: the heat goes up a star, and a
   // self-driving sedan stops cruising once it is Raka's.
   if (ride.steal) {
@@ -396,7 +439,64 @@ function step(dt) {
     // the same way and never lets it come back while he is still deep.
     const running = input.running && vitals.canRun;
     const exhaustedSwim = swimming && vitals.stamina <= 0;
-    vitals.update(dt, (running && moving) || (fastSwim && moving) || exhaustedSwim);
+
+    // Step 10: Space — in the water it dives (or surfaces), on land it
+    // jumps, vaults a low obstacle he is running at, or climbs onto one
+    // he is standing against. A dive ends on its own after a few seconds
+    // or when his stamina runs low, so diving alone can never drown him.
+    if (input.takeJump()) {
+      if (swimming) {
+        if (diving) {
+          diving = false;
+          diveTimer = 0;
+          hud.showDive(false);
+        } else if (vitals.stamina > DIVE_STAMINA_FLOOR) {
+          diving = true;
+          diveTimer = 0;
+          hud.showDive(true);
+        }
+      } else {
+        const vaultTarget = vaultableAhead(1.8, 0.5);
+        // A climb only counts while he is still below the top: standing
+        // on a crate and pressing Space is a jump, not another climb.
+        const climbTarget = (vaultTarget ?? vaultableAhead(0.9, 0.2));
+        const climbTop = climbTarget ? climbTarget.h : 0;
+        if (vaultTarget && running && moving) {
+          movement.vault();
+        } else if (climbTarget && world.groundHeightAt(hero.group.position.x, hero.group.position.z) < climbTop - 0.05) {
+          // Step up onto the top: step toward its centre first, stopping
+          // a little short of it, so he ends up standing on the top
+          // instead of on its edge (or just past it, and falling off).
+          const dx = climbTarget.x - hero.group.position.x;
+          const dz = climbTarget.z - hero.group.position.z;
+          const d = Math.hypot(dx, dz) || 1;
+          const nudge = Math.min(Math.max(d - 0.3, 0), 1.2);
+          hero.group.position.x += (dx / d) * nudge;
+          hero.group.position.z += (dz / d) * nudge;
+          movement.climb(climbTarget.h);
+        } else {
+          movement.jump();
+        }
+      }
+    }
+    if (diving) {
+      diveTimer += dt;
+      if (diveTimer >= DIVE_TIME || vitals.stamina <= DIVE_STAMINA_FLOOR) {
+        diving = false;
+        diveTimer = 0;
+        hud.showDive(false);
+      }
+    }
+    if (!swimming && diving) {
+      // He swam back into the shallows while under: surface at once.
+      diving = false;
+      diveTimer = 0;
+      hud.showDive(false);
+    }
+
+    // Diving spends stamina like running does; the drown rule itself is
+    // unchanged (stamina gone, far out, five seconds of grace).
+    vitals.update(dt, (running && moving) || (fastSwim && moving) || exhaustedSwim || diving);
 
     // Out of stamina in deep water: a 5-second grace to swim back to the
     // shallows (the warning counts it down), then he goes under.
@@ -420,12 +520,15 @@ function step(dt) {
     const length = Math.hypot(moveX, moveZ);
     if (length > 1) { moveX /= length; moveZ /= length; }
 
-    // Ease toward the target speed (walk, run, wade, swim, or stop).
+    // Ease toward the target speed (walk, run, wade, swim, or stop). A
+    // vault adds a burst, so he carries over the obstacle instead of
+    // landing on top of it.
     const target = !moving ? 0
       : swimming ? (fastSwim ? FAST_SWIM_SPEED : SWIM_SPEED)
       : wading ? (running ? RUN_SPEED * 0.5 : WALK_SPEED * 0.5)
       : (running ? RUN_SPEED : WALK_SPEED);
-    speed += (target - speed) * Math.min(1, dt * 8);
+    const boosted = movement.vaulting ? target * 1.35 : target;
+    speed += (boosted - speed) * Math.min(1, dt * 8);
     if (speed < 0.05) speed = 0;
 
     if (moving && speed > 0.05) {
@@ -434,20 +537,53 @@ function step(dt) {
       // Stay inside the city — and the bay, south to the far edge of the sea.
       hero.group.position.x = Math.max(-world.bounds, Math.min(world.bounds, hero.group.position.x));
       hero.group.position.z = Math.max(-world.bounds, Math.min(water.seaMaxZ, hero.group.position.z));
+      // Step 10: crates and low walls are solid on foot — a walk into one
+      // stops at its edge. (Airborne, vaulting and climbing skip this, so
+      // a jump or a vault can carry him over or onto one.)
+      const feetY = movement.y;
+      if (!swimming && !movement.airborne && !movement.climbing) {
+        let top = 0;
+        for (const v of world.vaultables) {
+          if (
+            hero.group.position.x >= v.x - v.hw && hero.group.position.x <= v.x + v.hw
+            && hero.group.position.z >= v.z - v.hd && hero.group.position.z <= v.z + v.hd
+          ) top = Math.max(top, v.h);
+        }
+        if (feetY < top - 0.05) {
+          const out = world.pushOutOfVaultable(hero.group.position.x, hero.group.position.z, 0.5);
+          hero.group.position.x = out.x;
+          hero.group.position.z = out.z;
+        }
+      }
       // Face where he moves.
       hero.face(Math.atan2(moveX, moveZ));
     }
 
+    // The ground under his feet: the street, or an obstacle's top.
+    const groundY = world.groundHeightAt(hero.group.position.x, hero.group.position.z);
     if (swimming) {
-      // Head above the water, bobbing on the swell; the crawl replaces the walk.
-      hero.group.position.y = -0.75 + Math.sin(performance.now() / 1000 * 2) * 0.05;
-      hero.swim(dt, fastSwim);
+      // A jump that carries him into the sea ends at the water: the
+      // vertical rig's flags clear, and the swim takes his height over.
+      if (movement.airborne || movement.vaulting || movement.climbing) movement.reset();
+      if (diving) {
+        // Under the surface: feet well below the swell, the crawl stroke
+        // still going, the whole screen blue.
+        hero.group.position.y = DIVE_Y;
+        hero.swim(dt, fastSwim);
+      } else {
+        // Head above the water, bobbing on the swell; the crawl replaces the walk.
+        hero.group.position.y = -0.75 + Math.sin(performance.now() / 1000 * 2) * 0.05;
+        hero.swim(dt, fastSwim);
+      }
       hud.updateSwim(speed, fastSwim);
     } else {
-      hero.group.position.y = 0;
-      hero.update(dt, speed, moving);
+      // Back on dry land after a swim: feet on the ground under him.
+      if (wasSwimming) movement.snapTo(groundY);
+      hero.group.position.y = movement.update(dt, groundY);
+      hero.update(dt, speed, moving, movement.airborne, movement.vaulting, groundY);
       hud.updateFoot(speed, moving, running);
     }
+    wasSwimming = swimming;
     chase.update(dt, hero.group.position, false);
 
     // --- aim: hold right mouse and Raka bids down the sights ----------------
@@ -461,16 +597,31 @@ function step(dt) {
     chase.setTargetFov(aiming ? FOV_AIM : FOV_NORMAL);
     hud.setAiming(aiming);
 
-    // --- the Pistol: a click fires, R reloads --------------------------------
-    // A round landing near a pedestrian scares them into running (the combat
-    // rig tells the street where it landed, through its onShot callback).
-    // An aimed round flies nearly true; a hip-fired one wobbles a little.
-    if (!swimming && input.takeShot()) combat.shoot(aiming);
+    // --- weapons: 1 is the fists, 2 is the pistol ---------------------------
+    // A click uses whichever is selected: a punch up close, a round at
+    // range. R reloads the pistol (the fists never reload).
+    if (input.takeSlot1()) combat.selectSlot(1);
+    if (input.takeSlot2()) combat.selectSlot(2);
+    if (!swimming && input.takeShot()) {
+      if (combat.slot === 1) combat.punch();
+      else combat.shoot(aiming);
+    }
     if (!swimming && input.takeReload()) combat.reload();
 
     // --- a ride: near one, E gets in -----------------------------------------
+    // A vault or a climb outranks the ride prompt while an obstacle is
+    // ahead of him: the prompt names the move Space will do.
     const ride = nearestRide();
-    hud.setPrompt(ride ? (ride.prompt ?? 'Press E to enter the Sunset GT') : null);
+    const vaultHint = !swimming && vaultableAhead(1.8, 0.5);
+    const climbCand = !swimming && !vaultHint && vaultableAhead(0.9, 0.2);
+    // No climb hint while he already stands on the obstacle's top.
+    const climbHint = climbCand && world.groundHeightAt(hero.group.position.x, hero.group.position.z) < climbCand.h - 0.05;
+    hud.setPrompt(
+      vaultHint && running && moving ? 'Press Space to vault'
+        : climbHint ? 'Press Space to climb up'
+        : ride ? (ride.prompt ?? 'Press E to enter the Sunset GT')
+        : null,
+    );
     if (input.takeAction() && ride) enterVehicle(ride);
   }
 
@@ -608,6 +759,28 @@ window.__solmar = {
   get drowning() { return drownTimer > 0; },
   /** Step 9: true while Raka stands at a boat's helm, in the open. */
   get ridingBoat() { return ridingBoat; },
+  /** Step 10: true while Raka is under the surface on a dive. */
+  get diving() { return diving; },
+  /** Step 10: true while Raka is off the ground (a jump, a vault, a fall). */
+  get airborne() { return movement.airborne; },
+  /** Step 10: true while a vault's burst is running. */
+  get vaulting() { return movement.vaulting; },
+  /** Step 10: the selected weapon slot (1 Fists, 2 Pistol). */
+  get weaponSlot() { return combat.slot; },
+  /** Step 10: punches swung and punches that landed. */
+  get punchesThrown() { return combat.punchesThrown; },
+  get punchHits() { return combat.punchHits; },
+  /** Step 10: the ground height under Raka (a crate's top, or 0). */
+  get groundY() { return world.groundHeightAt(hero.group.position.x, hero.group.position.z); },
+  /** Step 10: the low obstacles Raka can vault or climb. */
+  get vaultables() {
+    return world.vaultables.map((v) => ({ x: v.x, z: v.z, hw: v.hw, hd: v.hd, h: v.h }));
+  },
+  /** Step 10: true while the underwater tint is showing. */
+  get diveOverlayShown() {
+    const el = document.getElementById('dive-overlay');
+    return el ? el.style.display === 'block' : false;
+  },
   /** Step 9: the boats' spots, for the test harness. */
   get boats() {
     return water.boats.map((b) => ({
@@ -736,6 +909,57 @@ window.__solmar = {
     },
     /** Step 9: set the stamina at once (the drown check drains it). */
     setStamina(n) { vitals.setStamina(n); },
+    /** Step 10: select a weapon slot at once (1 Fists, 2 Pistol). */
+    selectSlot(n) { return combat.selectSlot(n); },
+    /** Step 10: throw a punch at once, as if Raka clicked with the fists. */
+    punch() { return combat.punch(); },
+    /** Step 10: jump at once, as if Raka pressed Space on land. */
+    jump() { return movement.jump(); },
+    /** Step 10: vault at once, as if Raka pressed Space while running at an obstacle. */
+    vault() { return movement.vault(); },
+    /** Step 10: what the Space handler sees right now (vault/climb test aid). */
+    vaultCheck() {
+      const vaultTarget = vaultableAhead(1.8, 0.5);
+      return {
+        vaultTarget: vaultTarget ? { x: vaultTarget.x, z: vaultTarget.z, h: vaultTarget.h } : null,
+        climbTarget: Boolean(vaultTarget ?? vaultableAhead(0.9, 0.2)),
+        running: input.running && vitals.canRun,
+        inputRunning: input.running,
+        canRun: vitals.canRun,
+        moving: input.moving,
+        forward: input.forward,
+        yaw: hero.yaw,
+        pos: { x: hero.group.position.x, z: hero.group.position.z },
+        airborne: movement.airborne,
+        climbing: movement.climbing,
+      };
+    },
+    /** Step 10: put Raka beside the i-th low obstacle, facing it. */
+    toVaultable(i) {
+      if (driving) return false;
+      const v = world.vaultables[i];
+      if (!v) return false;
+      hero.group.position.set(v.x, 0, v.z + v.hd + 1.6);
+      hero.group.visible = true;
+      hero.face(Math.PI);
+      hero.group.rotation.y = Math.PI;
+      movement.snapTo(0);
+      speed = 0;
+      return true;
+    },
+    /** Step 10: put Raka on top of the i-th low obstacle. */
+    onVaultable(i) {
+      if (driving) return false;
+      const v = world.vaultables[i];
+      if (!v) return false;
+      hero.group.position.set(v.x, 0, v.z);
+      hero.group.visible = true;
+      hero.face(Math.PI);
+      hero.group.rotation.y = Math.PI;
+      movement.snapTo(v.h);
+      speed = 0;
+      return true;
+    },
     /** Put Raka beside the mission start marker, facing it. */
     toMissionStart() {
       if (driving) return false;

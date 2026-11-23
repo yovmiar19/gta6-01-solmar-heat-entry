@@ -1,12 +1,23 @@
-// Step 4 — shooting and combat. Raka carries a Pistol (a Handgun): left
-// click fires one round, R reloads the magazine from the reserve. A shot is
-// a ray from Raka's chest along the way he faces: it can hit the practice
-// dummy on the avenue, a patrol car (shooting the police is a crime, so it
-// earns a star), a pedestrian (hitting one is a crime too, so it earns a
-// star and makes them run), or a wall, and it always shows a muzzle flash,
-// a tracer line and a spark where it lands. Ammo, the hit count and the
-// reload state are the HUD's to read; the game loop calls update() every
-// frame.
+// Step 10 — shooting and fighting. Raka carries two weapons on a bar,
+// like Karimbu's: slot 1 is his Fists (infinite, close range), slot 2 is
+// his Pistol (a Handgun, 12 in the magazine, 24 spare). Keys 1 and 2 swap
+// between them; a left click uses whichever is selected.
+//
+// A pistol round is a ray from Raka's chest along the way he faces: it can
+// hit the practice dummy on the avenue, a patrol car (shooting the police
+// is a crime, so it earns a star), a pedestrian (hitting one is a crime
+// too, so it earns a star and makes them run), or a wall, and it always
+// shows a muzzle flash, a tracer line and a spark where it lands.
+//
+// A punch is shorter and simpler: anything shootable within about two
+// metres, in front of him, takes the hit. The dummy counts as a hit (the
+// Target Practice job counts it, same as a round). A pedestrian takes a
+// shove and runs away scared — hitting one is a crime, so it earns a star.
+// A patrol car takes the hit as an assault on the police, which earns a
+// star too. A punch has no tracer and no spark: the arm swing is the effect.
+//
+// Ammo, the hit count and the reload state are the HUD's to read; the game
+// loop calls update() every frame.
 
 const MAG_SIZE = 12; // rounds in one magazine
 const RESERVE_START = 24; // spare rounds Raka starts with
@@ -19,6 +30,10 @@ const TRACER_TIME = 0.12; // seconds the tracer line lingers
 const SPARK_TIME = 0.25; // seconds the impact spark lasts
 const HIP_SPREAD = 0.03; // radians of wobble on a hip-fired round (~1.7 deg)
 const AIM_SPREAD = 0.004; // radians of wobble while aiming (~0.2 deg)
+const PUNCH_RANGE = 2.2; // how far a punch reaches, in metres
+const PUNCH_CONE = 0.45; // how far off-centre a punch still lands (cosine)
+const PUNCH_COOLDOWN = 0.4; // seconds between punches
+const PUNCH_SHOVE = 0.6; // metres a punched pedestrian is shoved
 
 const FLASH_COLOR = 0xffe9a0;
 const TRACER_COLOR = 0xffe9a0;
@@ -26,17 +41,19 @@ const SPARK_COLOR = 0xffd23e;
 
 /**
  * Build the combat rig. `scene` is the city, `hero` is Raka's rig (for the
- * muzzle position and the aim pose), `police` is the wanted system (a hit on
- * a patrol car earns a star through noteShooting), `onHit` fires when a
- * round lands on something shootable (the HUD flashes its hit marker), and
- * `onShot` fires after every round that leaves the muzzle, with the landing
- * point (so the street can scare the pedestrians standing near it).
+ * muzzle position, the aim pose and the punch swing), `police` is the
+ * wanted system (a hit on a patrol car or a pedestrian earns a star),
+ * `traffic` is the street (its pedestrians are what a punch can reach),
+ * `onHit` fires when a round or a punch lands on something hittable (the
+ * HUD flashes its hit marker), and `onShot` fires after every round that
+ * leaves the muzzle, with the landing point (so the street can scare the
+ * pedestrians standing near it).
  */
-export function createCombat(scene, hero, police, onHit, onShot) {
+export function createCombat(scene, hero, police, traffic, onHit, onShot) {
   // --- the practice dummy: a pole and a ringed board on the avenue ---------
   // It stands 8 metres north of where Raka starts, so a shot straight ahead
   // from the start lands on it. Its meshes carry userData.dummy, so the
-  // raycast knows what it hit.
+  // raycast knows what it hit. A punch checks the same spot by distance.
   const dummy = new THREE.Group();
   const poleMat = new THREE.MeshStandardMaterial({ color: 0x4a4238, roughness: 1 });
   const pole = new THREE.Mesh(new THREE.BoxGeometry(0.12, 1.1, 0.12), poleMat);
@@ -110,18 +127,26 @@ export function createCombat(scene, hero, police, onHit, onShot) {
   const forward = new THREE.Vector3();
   const hitPoint = new THREE.Vector3();
 
+  // --- the weapons -----------------------------------------------------------
+  // Slot 1 is the fists: no ammo, no reload, close range. Slot 2 is the
+  // pistol Raka has carried since step 4. He starts on the pistol, so the
+  // staged screenshots and the old tests read exactly what they did.
+  let slot = 2;
   let mag = MAG_SIZE;
   let reserve = RESERVE_START;
   let reloading = false;
   let reloadTimer = 0;
   let cooldown = 0;
+  let punchCooldown = 0;
   let flashTimer = 0;
   let tracerTimer = 0;
   let sparkTimer = 0;
   let aimTimer = 0; // seconds the aim pose still holds after a shot
-  let hits = 0; // rounds that landed on the dummy, a patrol car or a pedestrian
-  let dummyHits = 0; // rounds that landed on the practice dummy alone
+  let hits = 0; // rounds and punches that landed on the dummy, a patrol car or a pedestrian
+  let dummyHits = 0; // rounds and punches that landed on the practice dummy alone
   let shotsFired = 0;
+  let punchesThrown = 0; // punches swung, hit or miss
+  let punchHits = 0; // punches that landed on something hittable
   let shotX = 0; // where the last round landed (ground point, for scares)
   let shotZ = 0;
 
@@ -169,29 +194,123 @@ export function createCombat(scene, hero, police, onHit, onShot) {
     flashTimer = FLASH_TIME;
   }
 
+  /**
+   * Is a point in front of Raka and close enough to punch? `x, z` is the
+   * target's spot on the ground; the facing is Raka's yaw, the reach is
+   * the punch range, and the cone is wide enough that a punch at someone
+   * standing just off his shoulder still lands.
+   */
+  function inPunchReach(x, z) {
+    const dx = x - hero.group.position.x;
+    const dz = z - hero.group.position.z;
+    const d = Math.hypot(dx, dz);
+    if (d > PUNCH_RANGE) return false;
+    if (d < 0.01) return true;
+    const facing = Math.sin(hero.yaw) * (dx / d) + Math.cos(hero.yaw) * (dz / d);
+    return facing > PUNCH_CONE;
+  }
+
   return {
-    /** The weapon's name, shown on the HUD. */
-    weaponName: 'Pistol',
-    /** The weapon's category, shown on the HUD. */
-    weaponType: 'Handgun',
-    /** Rounds left in the magazine. */
-    get mag() { return mag; },
-    /** Spare rounds in reserve. */
-    get reserve() { return reserve; },
+    /** The selected weapon slot: 1 is Fists, 2 is the Pistol. */
+    get slot() { return slot; },
+    /** The selected weapon's name, shown on the HUD. */
+    get weaponName() { return slot === 1 ? 'Fists' : 'Pistol'; },
+    /** The selected weapon's category, shown on the HUD. */
+    get weaponType() { return slot === 1 ? 'Unarmed' : 'Handgun'; },
+    /** Rounds left in the magazine (∞ for the fists: they never run out). */
+    get mag() { return slot === 1 ? '∞' : mag; },
+    /** Spare rounds in reserve (∞ for the fists). */
+    get reserve() { return slot === 1 ? '∞' : reserve; },
     /** True while a reload is running. */
     get reloading() { return reloading; },
-    /** Rounds that landed on the dummy, a patrol car or a pedestrian. */
+    /** Rounds and punches that landed on the dummy, a patrol car or a pedestrian. */
     get hits() { return hits; },
-    /** Rounds that landed on the practice dummy alone (a mission counts them). */
+    /** Rounds and punches that landed on the practice dummy alone (a mission counts them). */
     get dummyHits() { return dummyHits; },
     /** Rounds fired so far. */
     get shotsFired() { return shotsFired; },
+    /** Punches swung so far, hit or miss. */
+    get punchesThrown() { return punchesThrown; },
+    /** Punches that landed on something hittable. */
+    get punchHits() { return punchHits; },
     /** Where the last round landed, x (a scare for pedestrians nearby). */
     get shotX() { return shotX; },
     /** Where the last round landed, z (a scare for pedestrians nearby). */
     get shotZ() { return shotZ; },
     /** True while Raka should hold the aim pose (just after a shot). */
     get aiming() { return aimTimer > 0; },
+
+    /**
+     * Swap weapons: 1 is the fists, 2 is the pistol. A reload in progress
+     * is dropped when he puts the pistol away.
+     */
+    selectSlot(next) {
+      if (next !== 1 && next !== 2) return false;
+      if (next === slot) return false;
+      slot = next;
+      if (slot === 1) {
+        reloading = false;
+        reloadTimer = 0;
+      }
+      return true;
+    },
+
+    /**
+     * Punch: swing a fist at whatever is in front of him, if the cooldown
+     * has passed. The arm swing is the effect — the rig asks the hero to
+     * throw it, hit or miss. A hit on the dummy counts for the Target
+     * Practice job; a hit on a pedestrian shoves them and scares them
+     * into running (and earns a star, like a round would); a hit on a
+     * patrol car is an assault on the police (and earns a star too).
+     */
+    punch() {
+      if (punchCooldown > 0) return false;
+      punchCooldown = PUNCH_COOLDOWN;
+      punchesThrown += 1;
+      hero.punch();
+
+      let landed = false;
+      // The dummy: standing 8 metres up the avenue from the start.
+      if (inPunchReach(dummy.position.x, dummy.position.z)) {
+        hits += 1;
+        dummyHits += 1;
+        punchHits += 1;
+        landed = true;
+      }
+      // The pedestrians: the nearest one in reach takes a shove and runs.
+      if (traffic) {
+        for (const npc of traffic.npcs) {
+          const nx = npc.group.position.x;
+          const nz = npc.group.position.z;
+          if (!inPunchReach(nx, nz)) continue;
+          // The shove: a step backwards, away from Raka, then the run.
+          const dx = nx - hero.group.position.x;
+          const dz = nz - hero.group.position.z;
+          const d = Math.hypot(dx, dz) || 1;
+          npc.group.position.x += (dx / d) * PUNCH_SHOVE;
+          npc.group.position.z += (dz / d) * PUNCH_SHOVE;
+          npc.fleeFrom(hero.group.position.x, hero.group.position.z);
+          police.noteAssault();
+          hits += 1;
+          punchHits += 1;
+          landed = true;
+          break; // one punch, one pedestrian
+        }
+      }
+      // A patrol car close enough to touch: punching the police is a crime.
+      if (police) {
+        for (const car of police.patrolPositions) {
+          if (!inPunchReach(car.x, car.z)) continue;
+          police.noteAssault();
+          hits += 1;
+          punchHits += 1;
+          landed = true;
+          break; // one punch, one patrol car
+        }
+      }
+      if (landed && onHit) onHit();
+      return true;
+    },
 
     /**
      * Fire one round, if the magazine is not empty, the reload is not
@@ -204,6 +323,7 @@ export function createCombat(scene, hero, police, onHit, onShot) {
      * is kept, so the game loop can scare the pedestrians standing near it.
      */
     shoot(aiming = false) {
+      if (slot !== 2) return false;
       if (reloading || cooldown > 0 || mag <= 0) return false;
       mag -= 1;
       shotsFired += 1;
@@ -260,8 +380,9 @@ export function createCombat(scene, hero, police, onHit, onShot) {
       return true;
     },
 
-    /** Start a reload, if the magazine is short and the reserve is not dry. */
+    /** Start a reload, if the magazine is short and the reserve is not dry. The fists never reload. */
     reload() {
+      if (slot !== 2) return false;
       if (reloading || mag >= MAG_SIZE || reserve <= 0) return false;
       reloading = true;
       reloadTimer = RELOAD_TIME;
@@ -274,6 +395,7 @@ export function createCombat(scene, hero, police, onHit, onShot) {
      * scene is frozen), the magazine one round down.
      */
     stageShoot() {
+      if (slot !== 2) slot = 2;
       if (mag === MAG_SIZE) {
         mag -= 1;
         shotsFired += 1;
@@ -294,11 +416,13 @@ export function createCombat(scene, hero, police, onHit, onShot) {
 
     /** Refill the weapon (a fresh start after BUSTED or WASTED). */
     reset() {
+      slot = 2;
       mag = MAG_SIZE;
       reserve = RESERVE_START;
       reloading = false;
       reloadTimer = 0;
       cooldown = 0;
+      punchCooldown = 0;
       aimTimer = 0;
       hero.aim(false);
       flash.visible = false;
@@ -306,9 +430,10 @@ export function createCombat(scene, hero, police, onHit, onShot) {
       spark.visible = false;
     },
 
-    /** Advance the timers: cooldown, reload, aim pose, flash, tracer, spark. */
+    /** Advance the timers: cooldown, punch cooldown, reload, aim pose, flash, tracer, spark. */
     update(dt) {
       cooldown = Math.max(0, cooldown - dt);
+      punchCooldown = Math.max(0, punchCooldown - dt);
       if (aimTimer > 0 && aimTimer < 900) {
         aimTimer = Math.max(0, aimTimer - dt);
         if (aimTimer === 0) hero.aim(false);
