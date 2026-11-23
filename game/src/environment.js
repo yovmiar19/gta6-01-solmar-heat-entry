@@ -138,9 +138,9 @@ export function createEnvironment(scene, world) {
   });
   const stars = new THREE.Points(starGeo, starMat);
   stars.frustumCulled = false;
-  // Stars are light, not matter: a round must fly straight past them.
-  // The raycaster tests points as well as meshes (threshold 1 m), so
-  // without this a shot can "hit" a star and never reach the dummy.
+  // A star is a dot of light, not a thing: the raycaster tests Points
+  // too (anything within 1 m counts as a hit), so a round could "land"
+  // on a star and never reach the dummy. Switch the test off for them.
   stars.raycast = () => {};
   scene.add(stars);
 
@@ -167,9 +167,9 @@ export function createEnvironment(scene, world) {
   });
   const rain = new THREE.Points(rainGeo, rainMat);
   rain.frustumCulled = false;
-  // The rain box follows the player, so drops are always around the
-  // muzzle: without this, a round "hits" a drop a hand's breadth out and
-  // never reaches anything solid. Rain is weather, not a wall.
+  // The rain box trails the player, so drops are always right by the
+  // muzzle: a round would "hit" a drop a hand's breadth out and stop
+  // there, never reaching anything solid. Rain is weather, not a wall.
   rain.raycast = () => {};
   scene.add(rain);
 
@@ -181,7 +181,7 @@ export function createEnvironment(scene, world) {
   });
   const bolt = new THREE.Line(boltGeo, boltMat);
   bolt.frustumCulled = false;
-  bolt.raycast = () => {}; // lightning is light, not a wall: rounds fly past it
+  bolt.raycast = () => {}; // a flash of light, not a wall: rounds fly past it
   scene.add(bolt);
 
   function strikeBolt(playerX, playerZ) {

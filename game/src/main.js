@@ -28,6 +28,7 @@ import { createMissions } from './missions.js';
 import { createEnvironment } from './environment.js';
 import { createWater } from './water.js';
 import { createMovement } from './movement.js';
+import { createStory } from './story.js';
 import { stageShot } from './shots.js';
 
 const WALK_SPEED = 3.2; // metres per second
@@ -47,6 +48,9 @@ const FOV_AIM = 40; // the zoomed-in field of view while Raka aims
 const params = new URLSearchParams(window.location.search);
 const seed = Number.parseInt(params.get('seed') || '7', 10) || 7;
 const shotName = params.get('shot');
+// Step 11: ?story=0 turns the cutscenes off (the test harness plays with
+// the story off, so a first-load intro never freezes its gameplay).
+const storyOff = params.get('story') === '0';
 
 // --- renderer ---------------------------------------------------------------
 const canvas = document.getElementById('game');
@@ -86,6 +90,9 @@ const vitals = createVitals();
 const combat = createCombat(scene, hero, police, traffic, () => hud.showHit(), (x, z) => traffic.noteShot(x, z));
 const movement = createMovement(); // step 10: jump, vault, climb
 const input = createInput(canvas, (dx, dy) => chase.orbit(dx, dy));
+const story = createStory(hud, input); // step 11: cutscene dialogue
+let introStarted = false; // step 11: the homecoming scene plays once, on load
+let cutsceneHint = false; // step 11: the dialogue hint line is showing
 
 // --- driving state ----------------------------------------------------------
 let driving = false;
@@ -383,6 +390,42 @@ function step(dt) {
     return;
   }
 
+  // Step 11: the story log opens with L, on foot, driving, or mid-cutscene.
+  if (input.takeLog()) story.toggleLog();
+
+  // Step 11: the homecoming scene plays once, on the first frame of play
+  // (never on a staged screenshot frame, never with the story off).
+  if (!introStarted) {
+    introStarted = true;
+    if (!storyOff) story.play('intro');
+  }
+
+  // Step 11: a cutscene pauses the world — the dialogue plays, the game
+  // waits. The sky and the sea hold still behind the letterbox bars, the
+  // radar keeps drawing, and the mission marker keeps pulsing. Space or a
+  // click moves the dialogue on, Esc skips the scene.
+  if (story.playing) {
+    if (!cutsceneHint) {
+      cutsceneHint = true;
+      hud.setHint('<b>Space</b> / <b>click</b> continue dialogue &nbsp;·&nbsp; <b>Esc</b> skip scene');
+    }
+    story.update(dt);
+    env.update(dt, {
+      player: { x: hero.group.position.x, z: hero.group.position.z },
+      driven: null,
+      frozen: true,
+    });
+    water.update(dt, { driven: null, frozen: true });
+    chase.update(dt, hero.group.position, false);
+    radar.update(radarState());
+    missions.pulse(dt);
+    if (!story.playing) {
+      cutsceneHint = false;
+      hud.setHint(null);
+    }
+    return;
+  }
+
   if (driving) {
     // --- behind the wheel ---------------------------------------------------
     // Aim is a on-foot thing: behind the wheel the zoom and the crosshair
@@ -609,16 +652,18 @@ function step(dt) {
     if (!swimming && input.takeReload()) combat.reload();
 
     // --- a ride: near one, E gets in -----------------------------------------
-    // A vault or a climb outranks the ride prompt while an obstacle is
-    // ahead of him: the prompt names the move Space will do.
+    // Space does different things near a low obstacle, so the prompt
+    // names the move it will do: a vault beats a climb, a climb beats
+    // getting in a ride. A climb only counts while he is still below the
+    // top — standing on a crate already, the prompt stays quiet.
     const ride = nearestRide();
-    const vaultHint = !swimming && vaultableAhead(1.8, 0.5);
-    const climbCand = !swimming && !vaultHint && vaultableAhead(0.9, 0.2);
-    // No climb hint while he already stands on the obstacle's top.
-    const climbHint = climbCand && world.groundHeightAt(hero.group.position.x, hero.group.position.z) < climbCand.h - 0.05;
+    const vaultNear = !swimming && vaultableAhead(1.8, 0.5);
+    const climbNear = !swimming && !vaultNear && vaultableAhead(0.9, 0.2);
+    const climbShown = climbNear
+      && world.groundHeightAt(hero.group.position.x, hero.group.position.z) < climbNear.h - 0.05;
     hud.setPrompt(
-      vaultHint && running && moving ? 'Press Space to vault'
-        : climbHint ? 'Press Space to climb up'
+      vaultNear && running && moving ? 'Press Space to vault'
+        : climbShown ? 'Press Space to climb up'
         : ride ? (ride.prompt ?? 'Press E to enter the Sunset GT')
         : null,
     );
@@ -663,6 +708,10 @@ function step(dt) {
   // --- the jobs: start one at the marker, finish one at its target --------
   // A job pays cash and starts the next straight away; the banner calls
   // out each completion and the panel names the job in progress.
+  // Step 11: what the chain looked like before this frame, so a job
+  // starting or paying out can get its story beat.
+  const wasActiveId = missions.active ? missions.active.id : null;
+  const wasCash = missions.cash;
   missions.update(dt, {
     x: player.x,
     z: player.z,
@@ -674,6 +723,17 @@ function step(dt) {
   });
   const banner = missions.takeBanner();
   if (banner) hud.showMissionBanner(banner);
+  // Step 11: a job that just paid out gets its last word, and a job that
+  // just started gets its intro — in that order, queued behind each
+  // other. The last job pays out into the all-jobs-done line as well.
+  if (!storyOff && missions.cash > wasCash && wasActiveId) {
+    story.play(`done-${wasActiveId}`);
+    if (wasActiveId === 'heat') story.play('done-all');
+  }
+  const nowActiveId = missions.active ? missions.active.id : null;
+  if (!storyOff && nowActiveId && nowActiveId !== wasActiveId) {
+    story.play(`intro-${nowActiveId}`);
+  }
   hud.setMission(
     missions.active ? missions.active.name : null,
     missions.active ? missions.active.objective : null,
@@ -781,6 +841,10 @@ window.__solmar = {
     const el = document.getElementById('dive-overlay');
     return el ? el.style.display === 'block' : false;
   },
+  /** Step 11: true while a cutscene is playing. */
+  get storyPlaying() { return story.playing; },
+  /** Step 11: the story beats seen so far. */
+  get storyLog() { return story.log; },
   /** Step 9: the boats' spots, for the test harness. */
   get boats() {
     return water.boats.map((b) => ({
@@ -970,6 +1034,27 @@ window.__solmar = {
       speed = 0;
       return true;
     },
+    /** Step 11: the story player's state (for the test harness). */
+    storyState() {
+      return {
+        playing: story.playing,
+        scene: story.sceneId,
+        line: story.lineIndex,
+        typed: story.typed,
+        lineDone: story.lineDone,
+        log: story.log,
+        logOpen: story.logOpen,
+        boxShown: document.getElementById('dialogue').style.display,
+        beat: document.getElementById('story-beat').textContent,
+        hint: document.getElementById('hint').textContent,
+      };
+    },
+    /** Step 11: play a scene by id at once ('intro', 'intro-pier', ...). */
+    playScene(id) { return story.play(id); },
+    /** Step 11: skip the scene playing now and everything queued. */
+    skipStory() { story.skipAll(); },
+    /** Step 11: open or close the story log panel. */
+    toggleStoryLog() { return story.toggleLog(); },
     /** Put Raka (or the ride he is driving) beside the active target. */
     toTarget() {
       const t = missions.target;

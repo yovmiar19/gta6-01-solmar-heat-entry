@@ -17,6 +17,8 @@ export function createInput(canvas, onOrbit) {
   let jumpQueued = false; // Space pressed since the last takeJump() call (step 10)
   let slot1Queued = false; // 1 pressed since the last takeSlot1() call (step 10)
   let slot2Queued = false; // 2 pressed since the last takeSlot2() call (step 10)
+  let skipQueued = false; // Esc pressed since the last takeSkip() call (step 11)
+  let logQueued = false; // L pressed since the last takeLog() call (step 11)
   let aiming = false; // right mouse held since the last pointer event
   let dragging = false;
   let clickCandidate = false; // left button down, not yet released: may be a click
@@ -39,6 +41,8 @@ export function createInput(canvas, onOrbit) {
     if (event.code === 'Space' && !event.repeat) jumpQueued = true;
     if (event.code === 'Digit1' && !event.repeat) slot1Queued = true;
     if (event.code === 'Digit2' && !event.repeat) slot2Queued = true;
+    if (event.code === 'Escape' && !event.repeat) skipQueued = true;
+    if (event.code === 'KeyL' && !event.repeat) logQueued = true;
     keys.add(event.code);
   }
   function up(event) {
@@ -200,6 +204,18 @@ export function createInput(canvas, onOrbit) {
     takeSlot2() {
       const pressed = slot2Queued;
       slot2Queued = false;
+      return pressed;
+    },
+    /** True once per Esc press, then clears: skip the cutscene (step 11). */
+    takeSkip() {
+      const pressed = skipQueued;
+      skipQueued = false;
+      return pressed;
+    },
+    /** True once per L press, then clears: open the story log (step 11). */
+    takeLog() {
+      const pressed = logQueued;
+      logQueued = false;
       return pressed;
     },
     /** True while the right mouse button is held: aim mode. */

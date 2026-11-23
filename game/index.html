@@ -108,6 +108,29 @@
   /* Controls hint, bottom-centre. */
   #hint { position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%); font-size: 12px; color: rgba(255, 255, 255, 0.85); text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85); white-space: nowrap; }
   #hint b { color: #f2c94c; }
+
+  /* Letterbox bars + dialogue box (step 11): the cutscene frame. */
+  #letterbox-top, #letterbox-bottom { position: fixed; left: 0; right: 0; height: 8vh; background: #000; display: none; z-index: 6; }
+  #letterbox-top { top: 0; }
+  #letterbox-bottom { bottom: 0; }
+  #dialogue { position: fixed; left: 50%; bottom: 9vh; transform: translateX(-50%); width: min(720px, 92vw); display: none; align-items: flex-start; gap: 14px; background: rgba(16, 11, 7, 0.92); border: 1px solid rgba(242, 201, 76, 0.55); border-radius: 10px; padding: 14px 16px; z-index: 7; box-shadow: 0 4px 24px rgba(0, 0, 0, 0.6); }
+  #dlg-portrait { width: 96px; height: 96px; flex: none; border-radius: 8px; border: 1px solid rgba(255, 255, 255, 0.25); }
+  #dlg-body { flex: 1; min-width: 0; }
+  #dlg-name { font-size: 13px; font-weight: 900; letter-spacing: 0.14em; }
+  #dlg-text { font-size: 16px; line-height: 1.5; color: #fff; margin-top: 6px; min-height: 48px; }
+  #dlg-continue { text-align: right; font-size: 11px; letter-spacing: 0.12em; color: #f2c94c; font-weight: 700; margin-top: 8px; visibility: hidden; animation: dlgblink 1s steps(2) infinite; }
+  @keyframes dlgblink { 50% { opacity: 0.35; } }
+
+  /* Story log (step 11): beats seen so far, toggled with L. */
+  #story-log { position: absolute; top: 246px; left: 14px; width: 260px; display: none; z-index: 5; }
+  #story-log-list { max-height: 300px; overflow-y: auto; }
+  .log-beat { margin-top: 8px; }
+  .log-beat:first-child { margin-top: 2px; }
+  .log-title { font-size: 12px; font-weight: 800; letter-spacing: 0.08em; color: #f2c94c; }
+  .log-line { font-size: 12px; color: #d8cfc2; line-height: 1.35; margin-top: 2px; font-style: italic; }
+
+  /* Story beat line in the mission panel (step 11). */
+  #story-beat { font-size: 11px; letter-spacing: 0.1em; color: #ff9a5c; font-weight: 700; margin-top: 6px; }
 </style>
 </head>
 <body>
@@ -118,7 +141,7 @@
   <div id="title-panel" class="panel">
     <div class="name">SOLMAR <span class="heat">HEAT</span></div>
     <div class="place">SOLMAR BAY</div>
-    <div class="step">STEP 10 — LOMPAT + MELEE + PANJAT + MENYELAM (JUMP, FISTS, VAULT, DIVE)</div>
+    <div class="step">STEP 11 — CERITA + CUTSCENE (STORY, DIALOGUE, PORTRAITS)</div>
   </div>
   <div id="clock-box">
     <div id="clock">17:30</div>
@@ -133,6 +156,11 @@
     <div id="mission-name">NO MISSION</div>
     <div id="mission-objective">Walk into the glowing cyan marker to start a job.</div>
     <div id="cash-line">CASH <b id="cash-num">$0</b></div>
+    <div id="story-beat"></div>
+  </div>
+  <div id="story-log" class="panel">
+    <div class="label">STORY LOG</div>
+    <div id="story-log-list"></div>
   </div>
   <div id="mission-banner"></div>
   <div id="drown-warning">⚠ STAMINA GONE — SWIM BACK TO SHORE! <span id="drown-num">5</span>s</div>
@@ -156,7 +184,17 @@
   <div id="crosshair"><span class="tick h-left"></span><span class="tick h-right"></span><span class="tick v-top"></span><span class="tick v-bottom"></span><span class="dot"></span></div>
   <div id="car-prompt"></div>
   <div id="dive-overlay"></div>
-  <div id="hint"><b>WASD</b> move &nbsp;·&nbsp; <b>Shift</b> run / fast swim &nbsp;·&nbsp; <b>Space</b> jump / vault / dive &nbsp;·&nbsp; <b>1</b> fists &nbsp;·&nbsp; <b>2</b> pistol &nbsp;·&nbsp; <b>E</b> enter car or boat &nbsp;·&nbsp; <b>right-click</b> aim &nbsp;·&nbsp; <b>click</b> shoot / punch &nbsp;·&nbsp; <b>R</b> reload &nbsp;·&nbsp; <b>C</b> weather &nbsp;·&nbsp; <b>T</b> time +2h &nbsp;·&nbsp; <b>drag</b> to look around &nbsp;·&nbsp; <b>walk south</b> to the beach &nbsp;·&nbsp; <b>glowing marker</b> starts a mission</div>
+  <div id="letterbox-top"></div>
+  <div id="letterbox-bottom"></div>
+  <div id="dialogue">
+    <canvas id="dlg-portrait" width="192" height="192"></canvas>
+    <div id="dlg-body">
+      <div id="dlg-name">MIRA</div>
+      <div id="dlg-text"></div>
+      <div id="dlg-continue">SPACE ▸</div>
+    </div>
+  </div>
+  <div id="hint"><b>WASD</b> move &nbsp;·&nbsp; <b>Shift</b> run / fast swim &nbsp;·&nbsp; <b>Space</b> jump / vault / dive &nbsp;·&nbsp; <b>1</b> fists &nbsp;·&nbsp; <b>2</b> pistol &nbsp;·&nbsp; <b>E</b> enter car or boat &nbsp;·&nbsp; <b>right-click</b> aim &nbsp;·&nbsp; <b>click</b> shoot / punch &nbsp;·&nbsp; <b>R</b> reload &nbsp;·&nbsp; <b>C</b> weather &nbsp;·&nbsp; <b>T</b> time +2h &nbsp;·&nbsp; <b>L</b> story log &nbsp;·&nbsp; <b>drag</b> to look around &nbsp;·&nbsp; <b>walk south</b> to the beach &nbsp;·&nbsp; <b>glowing marker</b> starts a mission</div>
   <div id="busted-overlay">
     <div id="busted-text">BUSTED</div>
     <div id="busted-sub">Raka was caught — the heat is off... for now.</div>

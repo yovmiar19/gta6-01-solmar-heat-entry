@@ -40,6 +40,10 @@ export function createHud() {
   const drownEl = document.getElementById('drown-warning');
   const drownNumEl = document.getElementById('drown-num');
   const diveEl = document.getElementById('dive-overlay');
+  const storyBeatEl = document.getElementById('story-beat');
+  const hintEl = document.getElementById('hint');
+  const defaultHint = hintEl ? hintEl.innerHTML : '';
+  let lastStoryBeat = '';
   let lastDrown = -1;
   let lastClock = '';
   let lastState = '';
@@ -268,6 +272,25 @@ export function createHud() {
       missionBannerEl.style.display = 'block';
       if (bannerTimer) clearTimeout(bannerTimer);
       bannerTimer = setTimeout(() => { missionBannerEl.style.display = 'none'; }, 3000);
+    },
+    /**
+     * Show the story beat in progress ("ACT I — HOMECOMING") under the
+     * mission panel (step 11): a glance says where Raka is in the story.
+     */
+    setStoryBeat(text) {
+      if (!storyBeatEl) return;
+      if (text === lastStoryBeat) return;
+      lastStoryBeat = text;
+      storyBeatEl.textContent = text;
+    },
+    /**
+     * Swap the bottom hint line for a moment ("Space: advance the
+     * dialogue · Esc: skip"), or hand it back to the default controls
+     * line with null (step 11).
+     */
+    setHint(text) {
+      if (!hintEl) return;
+      hintEl.innerHTML = text ?? defaultHint;
     },
   };
 }
