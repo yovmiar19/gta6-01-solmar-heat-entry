@@ -68,6 +68,15 @@
   /* Hit marker, dead centre. It flashes when a round lands. */
   #hitmarker { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 30px; font-weight: 900; color: #fff; text-shadow: 0 0 8px rgba(255, 60, 40, 0.9), 0 0 2px #000; opacity: 0; transition: opacity 0.12s; pointer-events: none; }
 
+  /* Aim crosshair, dead centre. Hidden until Raka holds right mouse. */
+  #crosshair { position: absolute; top: 50%; left: 50%; width: 26px; height: 26px; transform: translate(-50%, -50%); display: none; pointer-events: none; }
+  #crosshair .tick { position: absolute; background: #fff; box-shadow: 0 0 3px #000, 0 0 1px #000; }
+  #crosshair .h-left { top: 12px; left: 0; width: 8px; height: 2px; }
+  #crosshair .h-right { top: 12px; right: 0; width: 8px; height: 2px; }
+  #crosshair .v-top { top: 0; left: 12px; width: 2px; height: 8px; }
+  #crosshair .v-bottom { bottom: 0; left: 12px; width: 2px; height: 8px; }
+  #crosshair .dot { position: absolute; top: 12px; left: 12px; width: 2px; height: 2px; background: #fff; box-shadow: 0 0 2px #000; }
+
   /* Survival panel, bottom-right: health, stamina, weapon, bullet count. */
   #survival { position: absolute; right: 14px; bottom: 14px; width: 220px; }
   #survival .row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
@@ -135,8 +144,9 @@
     <div id="ammo-line"><div id="ammo-num">12 / 24</div><div id="ammo-label">AMMO</div></div>
   </div>
   <div id="hitmarker">✕</div>
+  <div id="crosshair"><span class="tick h-left"></span><span class="tick h-right"></span><span class="tick v-top"></span><span class="tick v-bottom"></span><span class="dot"></span></div>
   <div id="car-prompt"></div>
-  <div id="hint"><b>WASD</b> move &nbsp;·&nbsp; <b>Shift</b> run &nbsp;·&nbsp; <b>E</b> enter car &nbsp;·&nbsp; <b>click</b> shoot &nbsp;·&nbsp; <b>R</b> reload &nbsp;·&nbsp; <b>drag</b> to look around &nbsp;·&nbsp; <b>glowing marker</b> starts a mission</div>
+  <div id="hint"><b>WASD</b> move &nbsp;·&nbsp; <b>Shift</b> run &nbsp;·&nbsp; <b>E</b> enter car &nbsp;·&nbsp; <b>right-click</b> aim &nbsp;·&nbsp; <b>click</b> shoot &nbsp;·&nbsp; <b>R</b> reload &nbsp;·&nbsp; <b>drag</b> to look around &nbsp;·&nbsp; <b>glowing marker</b> starts a mission</div>
   <div id="busted-overlay">
     <div id="busted-text">BUSTED</div>
     <div id="busted-sub">Raka was caught — the heat is off... for now.</div>

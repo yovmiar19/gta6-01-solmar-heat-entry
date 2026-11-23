@@ -6,9 +6,11 @@
 // street has pedestrians who walk the sidewalks and run when provoked, and
 // civilian rides Raka can steal — sedans, a motorbike, a truck and a bus —
 // and taking one is a crime, so the heat goes up a star. On foot a click
-// fires his Pistol and R reloads it; his health and stamina and the weapon
-// readouts ride on the HUD, and while driving the HUD names the ride he is
-// in. With ?shot=chase|street|closeup|drive|shoot&seed=7 in the URL it stages
+// fires his Pistol and R reloads it; holding right mouse aims — the camera
+// zooms in, a crosshair appears and the rounds fly truer, and Raka turns
+// to face where the camera looks so the crosshair tells the truth. His
+// health and stamina and the weapon readouts ride on the HUD, and while
+// driving the HUD names the ride he is in. With ?shot=chase|street|closeup|drive|shoot&seed=7 in the URL it stages
 // one deterministic screenshot scene instead and holds the frame.
 
 import { createWorld } from './world.js';
@@ -33,6 +35,8 @@ const CAR_CAM_DISTANCE = 8.5;
 const SPEED_LIMIT = 14; // metres per second, about 50 km/h: over it is a crime
 const BUSTED_HOLD = 2.5; // seconds the BUSTED screen stays up before respawn
 const WASTED_HOLD = 2.5; // seconds the WASTED screen stays up before respawn
+const FOV_NORMAL = 60; // the camera's field of view, in degrees
+const FOV_AIM = 40; // the zoomed-in field of view while Raka aims
 
 const params = new URLSearchParams(window.location.search);
 const seed = Number.parseInt(params.get('seed') || '7', 10) || 7;
@@ -80,6 +84,7 @@ let speed = 0; // Raka's ground speed on foot, smoothed toward the target
 let vehicle = null; // the ride Raka is driving (his Sunset GT or a stolen one)
 let vehicleName = 'Sunset GT'; // the ride's name, shown on the HUD
 let ridingBike = false; // true while Raka rides the motorbike in the open
+let aiming = false; // true while Raka holds right mouse on foot (aim mode)
 
 // --- busted state -----------------------------------------------------------
 // A patrol car pinned Raka: controls freeze, the BUSTED screen goes up, and
@@ -108,6 +113,9 @@ function startWasted() {
 function respawn() {
   driving = false;
   ridingBike = false;
+  aiming = false;
+  chase.setTargetFov(FOV_NORMAL);
+  hud.setAiming(false);
   vehicle = null;
   vehicleName = 'Sunset GT';
   car.halt();
@@ -279,6 +287,11 @@ function step(dt) {
 
   if (driving) {
     // --- behind the wheel ---------------------------------------------------
+    // Aim is a on-foot thing: behind the wheel the zoom and the crosshair
+    // stay off even if the right button is still held.
+    aiming = false;
+    chase.setTargetFov(FOV_NORMAL);
+    hud.setAiming(false);
     vehicle.update(dt, input, world);
     // On a motorbike Raka rides in the open: seat him on it — hips on the
     // seat (local z -0.5, y 0.07 so his hips sit on the seat top), facing
@@ -339,10 +352,21 @@ function step(dt) {
     chase.update(dt, hero.group.position, false);
     hud.updateFoot(speed, moving, running);
 
+    // --- aim: hold right mouse and Raka bids down the sights ----------------
+    // The camera zooms in, the crosshair comes up, and Raka turns to face
+    // where the camera looks, so a round goes where the crosshair points.
+    // (The camera's yaw is the direction from Raka to the camera, so the
+    // way he must face is the camera's yaw plus half a turn.)
+    aiming = input.aiming;
+    if (aiming) hero.face(chase.yaw + Math.PI);
+    chase.setTargetFov(aiming ? FOV_AIM : FOV_NORMAL);
+    hud.setAiming(aiming);
+
     // --- the Pistol: a click fires, R reloads --------------------------------
     // A round landing near a pedestrian scares them into running (the combat
     // rig tells the street where it landed, through its onShot callback).
-    if (input.takeShot()) combat.shoot();
+    // An aimed round flies nearly true; a hip-fired one wobbles a little.
+    if (input.takeShot()) combat.shoot(aiming);
     if (input.takeReload()) combat.reload();
 
     // --- a ride: near one, E gets in -----------------------------------------
@@ -353,6 +377,10 @@ function step(dt) {
 
   // --- combat timers (cooldown, reload, tracer, flash, spark) ---------------
   combat.update(dt);
+  // The aim pose holds while Raka aims, and for a beat after a hip-fired
+  // round; otherwise it drops. (Applied after the combat timers, so a
+  // shot's pose timer expiring cannot drop the pose mid-aim.)
+  hero.aim(aiming || combat.aiming);
 
   // --- the survival readouts: health, stamina, weapon, bullets --------------
   hud.setHealth(vitals.health, vitals.maxHealth);
@@ -442,6 +470,10 @@ window.__solmar = {
   get vehicleType() { return driving ? (vehicle.type ?? 'Car') : null; },
   get ridingBike() { return ridingBike; },
   get heroVisible() { return hero.group.visible; },
+  /** True while Raka holds right mouse on foot (aim mode). */
+  get aiming() { return aiming; },
+  /** The camera's current field of view, in degrees. */
+  get fov() { return chase.fov; },
   get heroPos3() {
     return { x: hero.group.position.x, y: hero.group.position.y, z: hero.group.position.z };
   },

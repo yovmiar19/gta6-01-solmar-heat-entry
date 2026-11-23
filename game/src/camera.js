@@ -12,6 +12,7 @@ export function createChaseCamera(camera) {
   const lookHeight = 1.5; // the camera looks at the hero's head height
   const desired = new THREE.Vector3();
   const lookAt = new THREE.Vector3();
+  let targetFov = 60; // the field of view the camera eases toward (aim narrows it)
 
   /** Shortest signed angle from `from` to `to`. */
   function angleDelta(from, to) {
@@ -33,6 +34,10 @@ export function createChaseCamera(camera) {
     },
     /** Pull the camera back or in (driving sits further out than walking). */
     setDistance(nextDistance) { distance = nextDistance; },
+    /** Ease the field of view toward a target (aim narrows it: a zoom-in). */
+    setTargetFov(fov) { targetFov = fov; },
+    /** The camera's current field of view, in degrees. */
+    get fov() { return camera.fov; },
     /** Ease the camera's yaw toward a heading (the car pulls it behind it). */
     yawToward(targetYaw, dt) {
       yaw += angleDelta(yaw, targetYaw) * Math.min(1, dt * 2.2);
@@ -52,6 +57,13 @@ export function createChaseCamera(camera) {
      * spot at once (screenshots); otherwise it chases smoothly.
      */
     update(dt, target, snap) {
+      // Ease the field of view toward its target, so aiming zooms in
+      // smoothly instead of snapping (and leaving aim zooms back out).
+      const nextFov = camera.fov + (targetFov - camera.fov) * Math.min(1, dt * 10);
+      if (Math.abs(nextFov - camera.fov) > 0.01) {
+        camera.fov = nextFov;
+        camera.updateProjectionMatrix();
+      }
       const horizontal = Math.cos(pitch) * distance;
       desired.set(
         target.x + Math.sin(yaw) * horizontal,

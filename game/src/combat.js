@@ -17,6 +17,8 @@ const SHOT_COOLDOWN = 0.22; // seconds between rounds
 const FLASH_TIME = 0.06; // seconds the muzzle flash shows
 const TRACER_TIME = 0.12; // seconds the tracer line lingers
 const SPARK_TIME = 0.25; // seconds the impact spark lasts
+const HIP_SPREAD = 0.03; // radians of wobble on a hip-fired round (~1.7 deg)
+const AIM_SPREAD = 0.004; // radians of wobble while aiming (~0.2 deg)
 
 const FLASH_COLOR = 0xffe9a0;
 const TRACER_COLOR = 0xffe9a0;
@@ -193,13 +195,15 @@ export function createCombat(scene, hero, police, onHit, onShot) {
 
     /**
      * Fire one round, if the magazine is not empty, the reload is not
-     * running and the cooldown has passed. The ray decides what it hit:
-     * the dummy, a patrol car or a pedestrian counts as a hit (a patrol
-     * car hit or a pedestrian hit is a crime, so the heat goes up a star);
-     * anything else just sparks. The landing point is kept, so the game
-     * loop can scare the pedestrians standing near it.
+     * running and the cooldown has passed. `aiming` says whether Raka is
+     * holding right mouse: an aimed round flies nearly true, a hip-fired
+     * one wobbles on a small cone, so aiming is worth doing. The ray
+     * decides what it hit: the dummy, a patrol car or a pedestrian counts
+     * as a hit (a patrol car hit or a pedestrian hit is a crime, so the
+     * heat goes up a star); anything else just sparks. The landing point
+     * is kept, so the game loop can scare the pedestrians standing near it.
      */
-    shoot() {
+    shoot(aiming = false) {
       if (reloading || cooldown > 0 || mag <= 0) return false;
       mag -= 1;
       shotsFired += 1;
@@ -209,6 +213,15 @@ export function createCombat(scene, hero, police, onHit, onShot) {
 
       muzzlePosition(muzzle);
       forward.set(Math.sin(hero.yaw), 0, Math.cos(hero.yaw));
+      // A held aim steadies the barrel; from the hip the round wanders a
+      // little. The wobble stays small: at the dummy's 8 metres a hip
+      // round strays at most ~0.24 m, still on the board.
+      const spread = aiming ? AIM_SPREAD : HIP_SPREAD;
+      const wobble = Math.random() * Math.PI * 2;
+      forward.x += Math.cos(wobble) * spread;
+      forward.z += Math.sin(wobble) * spread;
+      forward.y += (Math.random() * 2 - 1) * spread;
+      forward.normalize();
       raycaster.set(muzzle, forward);
       raycaster.far = RANGE;
       const found = raycaster.intersectObjects(scene.children, true);

@@ -30,6 +30,7 @@ export function createHud() {
   const weaponTypeEl = document.getElementById('weapon-type');
   const ammoEl = document.getElementById('ammo-num');
   const hitmarkerEl = document.getElementById('hitmarker');
+  const crosshairEl = document.getElementById('crosshair');
   const missionNameEl = document.getElementById('mission-name');
   const missionObjectiveEl = document.getElementById('mission-objective');
   const cashNumEl = document.getElementById('cash-num');
@@ -166,6 +167,13 @@ export function createHud() {
       hitmarkerEl.style.opacity = '1';
       if (hitTimer) clearTimeout(hitTimer);
       hitTimer = setTimeout(() => { hitmarkerEl.style.opacity = '0'; }, 150);
+    },
+    /**
+     * Show or hide the aim crosshair in the middle of the screen. It only
+     * appears while Raka holds right mouse: the bidik the player aims with.
+     */
+    setAiming(on) {
+      crosshairEl.style.display = on ? 'block' : 'none';
     },
     /**
      * Show the active mission: its NAME ("Pier Run") and its OBJECTIVE

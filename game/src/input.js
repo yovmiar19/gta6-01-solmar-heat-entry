@@ -1,16 +1,20 @@
 // Keyboard and mouse (WASD / arrows to move, Shift to run, drag to look,
-// click to shoot, R to reload).
+// right mouse held to aim, left click to shoot, R to reload).
 // Pointer events cover mouse and touch drags alike. The game reads the move
 // amounts each frame and turns them into camera-relative movement itself.
-// A press that barely moves the pointer and lifts quickly is a click, not a
-// drag: it queues one shot instead of orbiting the camera.
+// A press that barely moves the pointer is a click, not a drag: it queues
+// one shot instead of orbiting the camera. The right mouse button never
+// drags or shoots: holding it aims, and the browser's context menu is kept
+// off the whole game so a right click is aim alone.
 
 export function createInput(canvas, onOrbit) {
   const keys = new Set();
   let actionQueued = false; // E pressed since the last takeAction() call
   let shotQueued = false; // a click (not a drag) since the last takeShot() call
   let reloadQueued = false; // R pressed since the last takeReload() call
+  let aiming = false; // right mouse held since the last pointer event
   let dragging = false;
+  let clickCandidate = false; // left button down, not yet released: may be a click
   let lastX = 0;
   let lastY = 0;
   let downX = 0;
@@ -33,9 +37,17 @@ export function createInput(canvas, onOrbit) {
   function blur() {
     keys.clear();
     dragging = false;
+    aiming = false;
+    clickCandidate = false;
   }
 
   function pointerDown(event) {
+    // Right button: hold to aim. It never starts a drag and never shoots.
+    if (event.button === 2) {
+      aiming = true;
+      return;
+    }
+    if (event.button !== 0) return;
     dragging = true;
     lastX = event.clientX;
     lastY = event.clientY;
@@ -46,19 +58,60 @@ export function createInput(canvas, onOrbit) {
     canvas.setPointerCapture(event.pointerId);
   }
   function pointerMove(event) {
-    if (!dragging) return;
+    // Track how far the pointer travelled while the left button is held:
+    // that distance is what separates a click from a drag. The orbit
+    // itself only runs for a drag that began with a left pointerdown.
+    if (!(event.buttons & 1)) return;
     const dx = event.clientX - lastX;
     const dy = event.clientY - lastY;
     moved += Math.abs(dx) + Math.abs(dy);
     lastX = event.clientX;
     lastY = event.clientY;
-    onOrbit(dx, dy);
+    if (dragging) onOrbit(dx, dy);
   }
   function pointerUp(event) {
-    // A quick press that barely moved the pointer is a click: queue a shot.
-    // A real drag moved further or lasted longer and orbits only.
-    if (dragging && moved < 6 && performance.now() - downTime < 350) shotQueued = true;
+    // Releasing the right button leaves aim mode; it never fired a shot.
+    if (event.button === 2) {
+      aiming = false;
+      return;
+    }
+    if (event.button !== 0) return;
     dragging = false;
+  }
+  function pointerCancel() {
+    // An interrupted press orbits and aims no more, and fires nothing.
+    dragging = false;
+    aiming = false;
+    clickCandidate = false;
+  }
+
+  // Clicks are read off mousedown/mouseup, not pointerdown/pointerup:
+  // while the right button is already held, the browser never fires a
+  // pointerdown or pointerup for the left button at all — it only sends
+  // pointermove with the buttons mask — so a pointer-based click detector
+  // is blind to exactly the shot Yovmi asked for (left click while
+  // aiming). mousedown/mouseup fire once per button, held or not, so they
+  // see every shot. The drag state still lives on the pointer handlers
+  // above; these two only arm and settle a click candidate.
+  function mouseDown(event) {
+    if (event.button !== 0) return;
+    lastX = event.clientX;
+    lastY = event.clientY;
+    downX = event.clientX;
+    downY = event.clientY;
+    downTime = performance.now();
+    moved = 0;
+    clickCandidate = true;
+  }
+  function mouseUp(event) {
+    if (event.button !== 0) return;
+    // A press that barely moved the pointer is a click: queue a shot.
+    // A real drag moved further and orbits only. The time window is
+    // generous on purpose: on a slow frame the up handler can land well
+    // after the down handler, and a click held a second is still a click
+    // — movement, not speed, is what separates a click from a drag.
+    if (clickCandidate && moved < 6 && performance.now() - downTime < 1000) shotQueued = true;
+    clickCandidate = false;
   }
 
   window.addEventListener('keydown', down);
@@ -67,7 +120,21 @@ export function createInput(canvas, onOrbit) {
   canvas.addEventListener('pointerdown', pointerDown);
   canvas.addEventListener('pointermove', pointerMove);
   canvas.addEventListener('pointerup', pointerUp);
-  canvas.addEventListener('pointercancel', pointerUp);
+  canvas.addEventListener('pointercancel', pointerCancel);
+  canvas.addEventListener('mousedown', mouseDown);
+  canvas.addEventListener('mouseup', mouseUp);
+  // A right click anywhere in the game is aim, never the browser's menu
+  // (Inspect and the rest): the canvas, every HUD overlay above it, and
+  // the document itself all swallow the context menu. The page is the
+  // game, so no right click anywhere on it may open a menu and steal the
+  // aim press — a mis-click into Inspect is exactly what this stops.
+  function noMenu(event) {
+    event.preventDefault();
+  }
+  canvas.addEventListener('contextmenu', noMenu);
+  const hudRoot = document.getElementById('hud');
+  if (hudRoot) hudRoot.addEventListener('contextmenu', noMenu);
+  document.addEventListener('contextmenu', noMenu);
 
   function held(...codes) {
     return codes.some((code) => keys.has(code));
@@ -94,6 +161,10 @@ export function createInput(canvas, onOrbit) {
       const pressed = reloadQueued;
       reloadQueued = false;
       return pressed;
+    },
+    /** True while the right mouse button is held: aim mode. */
+    get aiming() {
+      return aiming;
     },
     /** Forward amount: +1 for W / Up, -1 for S / Down. */
     get forward() {
