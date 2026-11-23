@@ -1,11 +1,14 @@
-// SOLMAR HEAT, step 1 — the entrypoint. It builds the renderer, the city, Raka
-// and the third-person camera, then runs the loop: read the input, move Raka
-// camera-relative, turn him to face where he moves, chase him with the camera,
-// and refresh the HUD. With ?shot=chase|street|closeup|title&seed=7 in the URL
-// it stages one deterministic screenshot scene instead and holds the frame.
+// SOLMAR HEAT, step 2 — the entrypoint. It builds the renderer, the city,
+// Raka, his Sunset GT and the third-person camera, then runs the loop: on
+// foot, read the input, move Raka camera-relative and chase him; near the car,
+// E gets him in, and driving switches to arcade car controls with the camera
+// easing in behind the car. E again, stopped, gets him back out beside it.
+// With ?shot=chase|street|closeup|drive&seed=7 in the URL it stages one
+// deterministic screenshot scene instead and holds the frame.
 
 import { createWorld } from './world.js';
 import { createProtagonist } from './character.js';
+import { createCar } from './car.js';
 import { createChaseCamera } from './camera.js';
 import { createInput } from './input.js';
 import { createHud } from './hud.js';
@@ -13,6 +16,9 @@ import { stageShot } from './shots.js';
 
 const WALK_SPEED = 3.2; // metres per second
 const RUN_SPEED = 5.8;
+const ENTER_RANGE = 4; // how close Raka must be to get in the car
+const FOOT_CAM_DISTANCE = 5.5;
+const CAR_CAM_DISTANCE = 8.5;
 
 const params = new URLSearchParams(window.location.search);
 const seed = Number.parseInt(params.get('seed') || '7', 10) || 7;
@@ -30,7 +36,7 @@ renderer.outputColorSpace = THREE.SRGBColorSpace;
 const scene = new THREE.Scene();
 const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 500);
 
-// --- the city, the hero, the camera, the input, the HUD ----------------------
+// --- the city, the hero, the car, the camera, the input, the HUD ------------
 const world = createWorld(scene, seed);
 const hero = createProtagonist();
 hero.group.position.set(0, 0, 10);
@@ -38,24 +44,79 @@ hero.face(Math.PI); // north, up the main avenue into the city
 hero.group.rotation.y = Math.PI;
 scene.add(hero.group);
 
+const car = createCar();
+car.group.position.set(2.2, 0, 4.5); // parked on the avenue, ahead of Raka
+car.setHeading(Math.PI); // facing north, up the avenue
+scene.add(car.group);
+
 const chase = createChaseCamera(camera);
 const hud = createHud();
 const input = createInput(canvas, (dx, dy) => chase.orbit(dx, dy));
 
+// --- driving state ----------------------------------------------------------
+let driving = false;
+let speed = 0; // Raka's ground speed on foot, smoothed toward the target
+
+function enterCar() {
+  driving = true;
+  hero.group.visible = false;
+  chase.setDistance(CAR_CAM_DISTANCE);
+  hud.setPrompt(null);
+}
+
+function exitCar() {
+  driving = false;
+  car.halt();
+  speed = 0;
+  // Step out beside the car (its right side) and face the way it was going.
+  const rightX = Math.cos(car.yaw);
+  const rightZ = -Math.sin(car.yaw);
+  hero.group.position.set(
+    Math.max(-world.bounds, Math.min(world.bounds, car.group.position.x + rightX * 2.4)),
+    0,
+    Math.max(-world.bounds, Math.min(world.bounds, car.group.position.z + rightZ * 2.4)),
+  );
+  hero.group.visible = true;
+  hero.face(car.yaw);
+  chase.setDistance(FOOT_CAM_DISTANCE);
+  hud.setPrompt(null);
+}
+
 // A screenshot scene freezes the pose and holds the frame; play mode moves.
-const frozen = shotName ? stageShot(shotName, hero, chase) : false;
+const shotFocus = shotName ? stageShot(shotName, hero, chase, car) : null;
+const frozen = shotFocus !== null;
+if (frozen) {
+  // The HUD reads for the staged frame: the drive shot shows the car rolling.
+  if (shotName === 'drive') {
+    hud.updateDriving(11); // about 40 km/h, mid-avenue
+    hud.setPrompt(null);
+  } else {
+    hud.updateFoot(0, false, false);
+    hud.setPrompt(null);
+  }
+}
 
 // --- movement ----------------------------------------------------------------
-let speed = 0; // current ground speed, smoothed toward the target
-
 function step(dt) {
   world.update(dt);
   if (frozen) {
-    // Hold the staged frame: camera exactly on its spot, hero in his pose.
-    chase.update(dt, hero.group.position, true);
+    // Hold the staged frame: camera exactly on its spot.
+    chase.update(dt, shotFocus, true);
     return;
   }
 
+  if (driving) {
+    // --- behind the wheel ---------------------------------------------------
+    car.update(dt, input, world);
+    chase.yawToward(car.yaw, dt); // the camera eases in behind the car
+    chase.update(dt, car.group.position, false);
+    hud.updateDriving(car.speed);
+    hud.setPrompt(Math.abs(car.speed) < 1 ? 'Press E to get out' : null);
+    if (input.takeAction() && Math.abs(car.speed) < 1) exitCar();
+    return;
+  }
+
+  // --- on foot ---------------------------------------------------------------
   const f = input.forward;
   const s = input.strafe;
   const moving = input.moving;
@@ -86,7 +147,15 @@ function step(dt) {
 
   hero.update(dt, speed, moving);
   chase.update(dt, hero.group.position, false);
-  hud.update(speed, moving, running);
+  hud.updateFoot(speed, moving, running);
+
+  // --- the car: near it, E gets in ------------------------------------------
+  const nearCar = Math.hypot(
+    hero.group.position.x - car.group.position.x,
+    hero.group.position.z - car.group.position.z,
+  ) < ENTER_RANGE;
+  hud.setPrompt(nearCar ? 'Press E to enter the Sunset GT' : null);
+  if (input.takeAction() && nearCar) enterCar();
 }
 
 // --- the loop -----------------------------------------------------------------
@@ -103,6 +172,15 @@ function loop() {
   }
 }
 loop();
+
+// A small handle for the play-test: what mode the game is in, and the rigs.
+window.__solmar = {
+  get driving() { return driving; },
+  get heroPos() { return { x: hero.group.position.x, z: hero.group.position.z }; },
+  get carPos() { return { x: car.group.position.x, z: car.group.position.z }; },
+  get carSpeed() { return car.speed; },
+  hero, car,
+};
 
 window.addEventListener('resize', () => {
   camera.aspect = window.innerWidth / window.innerHeight;

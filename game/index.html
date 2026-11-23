@@ -28,13 +28,17 @@
   #clock { font-size: 22px; font-weight: 800; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.7); }
   #clock-sub { font-size: 11px; letter-spacing: 0.1em; color: #ffd97a; margin-top: 2px; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.7); }
 
-  /* On-foot state, bottom-left. */
+  /* On-foot / driving state, bottom-left. */
   #onfoot { position: absolute; left: 14px; bottom: 14px; width: 210px; }
   #move-state { font-size: 16px; font-weight: 800; letter-spacing: 0.08em; margin-top: 2px; }
   #speed-line { font-size: 12px; color: #d8cfc2; margin-top: 4px; }
   #speed-line b { color: #fff; }
   .bar { height: 8px; background: rgba(255, 255, 255, 0.18); border-radius: 4px; overflow: hidden; margin-top: 8px; }
   #pace-bar { height: 100%; background: #f2c94c; width: 0%; border-radius: 4px; }
+
+  /* Action prompt ("Press E to enter the Sunset GT"), above the hint. */
+  #car-prompt { position: absolute; bottom: 34px; left: 50%; transform: translateX(-50%); display: none; font-size: 14px; font-weight: 700; color: #ffd97a; background: rgba(20, 14, 8, 0.72); border: 1px solid rgba(242, 201, 76, 0.5); border-radius: 6px; padding: 6px 12px; white-space: nowrap; }
+  #car-prompt b { color: #fff; }
 
   /* Controls hint, bottom-centre. */
   #hint { position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%); font-size: 12px; color: rgba(255, 255, 255, 0.85); text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85); white-space: nowrap; }
@@ -49,19 +53,20 @@
   <div id="title-panel" class="panel">
     <div class="name">SOLMAR <span class="heat">HEAT</span></div>
     <div class="place">SOLMAR BAY · GOLDEN HOUR</div>
-    <div class="step">STEP 1 — ON FOOT · THIRD PERSON</div>
+    <div class="step">STEP 2 — ON FOOT + DRIVING</div>
   </div>
   <div id="clock-box">
     <div id="clock">17:30</div>
     <div id="clock-sub">GOLDEN HOUR</div>
   </div>
   <div id="onfoot" class="panel">
-    <div class="label">ON FOOT</div>
+    <div class="label" id="mode-label">ON FOOT</div>
     <div id="move-state">IDLE</div>
-    <div id="speed-line">Speed <b id="speed-num">0</b> km/h · Raka</div>
+    <div id="speed-line">Speed <b id="speed-num">0</b> km/h · <span id="speed-what">Raka</span></div>
     <div class="bar"><div id="pace-bar"></div></div>
   </div>
-  <div id="hint"><b>WASD</b> move &nbsp;·&nbsp; <b>Shift</b> run &nbsp;·&nbsp; <b>drag</b> to look around</div>
+  <div id="car-prompt"></div>
+  <div id="hint"><b>WASD</b> move &nbsp;·&nbsp; <b>Shift</b> run &nbsp;·&nbsp; <b>E</b> enter car &nbsp;·&nbsp; <b>drag</b> to look around</div>
 </div>
 
 <script src="./vendor/three.min.js"></script>

@@ -56,12 +56,14 @@ function makeSkyTexture() {
 }
 
 /**
- * Build the city into `scene` and return the playable bounds and an update step
- * (the clouds drift). `seed` picks the building heights, colours and props.
+ * Build the city into `scene` and return the playable bounds, the building
+ * footprints (for car collision) and an update step (the clouds drift).
+ * `seed` picks the building heights, colours and props.
  */
 export function createWorld(scene, seed) {
   const rand = mulberry32(seed);
   const bounds = 55; // the hero is clamped to [-bounds, bounds] on x and z
+  const colliders = []; // building footprints, filled in as the blocks go up
 
   // --- sky, fog and light -------------------------------------------------
   scene.background = makeSkyTexture();
@@ -161,6 +163,8 @@ export function createWorld(scene, seed) {
   for (const [x, z, w, d, h] of plots) {
     const height = h * (0.85 + rand() * 0.4);
     addBuilding(x, z, w, d, height, facades[Math.floor(rand() * facades.length)]);
+    // The building's footprint, grown a little, so cars cannot clip its walls.
+    colliders.push({ minX: x - w / 2 - 0.3, maxX: x + w / 2 + 0.3, minZ: z - d / 2 - 0.3, maxZ: z + d / 2 + 0.3 });
   }
 
   // --- street lamps ---------------------------------------------------------
@@ -222,6 +226,7 @@ export function createWorld(scene, seed) {
 
   return {
     bounds,
+    colliders,
     /** Drift the clouds slowly across the sky. */
     update(dt) {
       for (const cloud of clouds) {

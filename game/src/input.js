@@ -4,6 +4,7 @@
 
 export function createInput(canvas, onOrbit) {
   const keys = new Set();
+  let actionQueued = false; // E pressed since the last takeAction() call
   let dragging = false;
   let lastX = 0;
   let lastY = 0;
@@ -13,6 +14,7 @@ export function createInput(canvas, onOrbit) {
     if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(event.code)) {
       event.preventDefault();
     }
+    if (event.code === 'KeyE' && !event.repeat) actionQueued = true;
     keys.add(event.code);
   }
   function up(event) {
@@ -54,6 +56,15 @@ export function createInput(canvas, onOrbit) {
   }
 
   return {
+    /**
+     * True once per E press, then clears: enter the car when near it on foot,
+     * get out when driving and (nearly) stopped. Held E never repeats.
+     */
+    takeAction() {
+      const pressed = actionQueued;
+      actionQueued = false;
+      return pressed;
+    },
     /** Forward amount: +1 for W / Up, -1 for S / Down. */
     get forward() {
       return (held('KeyW', 'ArrowUp') ? 1 : 0) - (held('KeyS', 'ArrowDown') ? 1 : 0);

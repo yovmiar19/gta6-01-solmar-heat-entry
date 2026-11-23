@@ -13,6 +13,14 @@ export function createChaseCamera(camera) {
   const desired = new THREE.Vector3();
   const lookAt = new THREE.Vector3();
 
+  /** Shortest signed angle from `from` to `to`. */
+  function angleDelta(from, to) {
+    let d = (to - from) % (Math.PI * 2);
+    if (d > Math.PI) d -= Math.PI * 2;
+    if (d < -Math.PI) d += Math.PI * 2;
+    return d;
+  }
+
   return {
     /** Orbit the camera by a drag (dx, dy in pixels). */
     orbit(dx, dy) {
@@ -22,6 +30,12 @@ export function createChaseCamera(camera) {
     /** Set the orbit outright (used by the screenshot scenes). */
     setView(nextYaw, nextPitch, nextDistance) {
       yaw = nextYaw; pitch = nextPitch; distance = nextDistance;
+    },
+    /** Pull the camera back or in (driving sits further out than walking). */
+    setDistance(nextDistance) { distance = nextDistance; },
+    /** Ease the camera's yaw toward a heading (the car pulls it behind it). */
+    yawToward(targetYaw, dt) {
+      yaw += angleDelta(yaw, targetYaw) * Math.min(1, dt * 2.2);
     },
     /** The camera's yaw, so movement can be camera-relative. */
     get yaw() { return yaw; },
