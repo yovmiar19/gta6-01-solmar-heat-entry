@@ -131,6 +131,47 @@
 
   /* Story beat line in the mission panel (step 11). */
   #story-beat { font-size: 11px; letter-spacing: 0.1em; color: #ff9a5c; font-weight: 700; margin-top: 6px; }
+
+  /* --- Pause menu (step 12) -------------------------------------------------
+     Lives outside #hud so its buttons can take clicks: #hud swallows the
+     pointer. A centred panel with tabs — MAP, STORY, STATS, SETTINGS,
+     CONTROLS, SAVE — like Karimbu's pause screen. */
+  #pause-menu { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(660px, 94vw); max-height: 88vh; display: none; flex-direction: column; background: rgba(16, 11, 7, 0.97); border: 1px solid rgba(242, 201, 76, 0.55); border-radius: 12px; padding: 18px 20px; z-index: 20; color: #fff; box-shadow: 0 8px 40px rgba(0, 0, 0, 0.7); }
+  #pause-title { font-size: 28px; font-weight: 900; letter-spacing: 0.14em; }
+  #pause-sub { font-size: 12px; color: #ffd97a; letter-spacing: 0.12em; margin-top: 2px; }
+  #pause-tabs { display: flex; gap: 6px; margin-top: 14px; flex-wrap: wrap; }
+  .pause-tab { background: rgba(255, 255, 255, 0.08); color: #d8cfc2; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 6px; padding: 7px 12px; font-size: 12px; font-weight: 800; letter-spacing: 0.08em; cursor: pointer; font-family: inherit; }
+  .pause-tab.active { background: #f2c94c; color: #1a1206; border-color: #f2c94c; }
+  #pause-body { margin-top: 14px; overflow-y: auto; min-height: 280px; }
+  .pause-page { display: none; }
+  .pause-page.active { display: block; }
+  #pause-map { width: 420px; max-width: 100%; height: auto; display: block; margin: 0 auto; border-radius: 6px; border: 1px solid rgba(242, 201, 76, 0.35); }
+  #pause-map-legend { text-align: center; font-size: 12px; color: #d8cfc2; margin-top: 8px; line-height: 1.6; }
+  .pause-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 14px; padding: 8px 2px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+  .pause-row .k { color: #d8cfc2; letter-spacing: 0.08em; font-size: 12px; font-weight: 700; }
+  .pause-row .v { font-weight: 800; text-align: right; }
+  .pause-btn { background: #f2c94c; color: #1a1206; border: none; border-radius: 6px; padding: 9px 16px; font-size: 13px; font-weight: 800; letter-spacing: 0.08em; cursor: pointer; font-family: inherit; }
+  .pause-btn.ghost { background: rgba(255, 255, 255, 0.1); color: #fff; border: 1px solid rgba(255, 255, 255, 0.25); }
+  .pause-btn.danger { background: #ff4d3d; color: #fff; }
+  .pause-btn:disabled { opacity: 0.45; cursor: default; }
+  #pause-foot { display: flex; align-items: center; gap: 14px; margin-top: 16px; }
+  #pause-hint { font-size: 12px; color: #d8cfc2; }
+  .save-slot { border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 8px; padding: 10px 12px; margin-top: 8px; }
+  .save-slot .slot-name { font-weight: 900; letter-spacing: 0.08em; font-size: 13px; }
+  .save-slot .slot-info { font-size: 12px; color: #d8cfc2; margin-top: 3px; line-height: 1.45; }
+  .save-slot .slot-btns { display: flex; gap: 8px; margin-top: 8px; }
+  #set-reset-note { font-size: 12px; color: #d8cfc2; margin-top: 8px; line-height: 1.45; }
+
+  /* --- Start overlay (step 12): pick up where you left off ------------------
+     Only shown when a save exists: CONTINUE loads the newest save, NEW GAME
+     starts fresh (the saves stay in their slots). */
+  #start-overlay { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(440px, 92vw); display: none; flex-direction: column; align-items: center; text-align: center; background: rgba(16, 11, 7, 0.97); border: 1px solid rgba(242, 201, 76, 0.55); border-radius: 12px; padding: 28px 24px; z-index: 25; color: #fff; box-shadow: 0 8px 40px rgba(0, 0, 0, 0.7); }
+  #start-title { font-size: 34px; font-weight: 900; letter-spacing: 0.06em; }
+  #start-title .heat { color: #ff8a5c; }
+  #start-sub { font-size: 12px; color: #ffd97a; letter-spacing: 0.14em; margin-top: 4px; }
+  #start-save-info { font-size: 13px; color: #d8cfc2; margin-top: 16px; line-height: 1.5; }
+  #start-save-info b { color: #7ed957; }
+  #start-btns { display: flex; gap: 10px; margin-top: 20px; }
 </style>
 </head>
 <body>
@@ -141,7 +182,7 @@
   <div id="title-panel" class="panel">
     <div class="name">SOLMAR <span class="heat">HEAT</span></div>
     <div class="place">SOLMAR BAY</div>
-    <div class="step">STEP 11 — CERITA + CUTSCENE (STORY, DIALOGUE, PORTRAITS)</div>
+    <div class="step">STEP 12 — PAUSE + SAVE + SETTINGS</div>
   </div>
   <div id="clock-box">
     <div id="clock">17:30</div>
@@ -194,7 +235,7 @@
       <div id="dlg-continue">SPACE ▸</div>
     </div>
   </div>
-  <div id="hint"><b>WASD</b> move &nbsp;·&nbsp; <b>Shift</b> run / fast swim &nbsp;·&nbsp; <b>Space</b> jump / vault / dive &nbsp;·&nbsp; <b>1</b> fists &nbsp;·&nbsp; <b>2</b> pistol &nbsp;·&nbsp; <b>E</b> enter car or boat &nbsp;·&nbsp; <b>right-click</b> aim &nbsp;·&nbsp; <b>click</b> shoot / punch &nbsp;·&nbsp; <b>R</b> reload &nbsp;·&nbsp; <b>C</b> weather &nbsp;·&nbsp; <b>T</b> time +2h &nbsp;·&nbsp; <b>L</b> story log &nbsp;·&nbsp; <b>drag</b> to look around &nbsp;·&nbsp; <b>walk south</b> to the beach &nbsp;·&nbsp; <b>glowing marker</b> starts a mission</div>
+  <div id="hint"><b>WASD</b> move &nbsp;·&nbsp; <b>Shift</b> run / fast swim &nbsp;·&nbsp; <b>Space</b> jump / vault / dive &nbsp;·&nbsp; <b>1</b> fists &nbsp;·&nbsp; <b>2</b> pistol &nbsp;·&nbsp; <b>E</b> enter car or boat &nbsp;·&nbsp; <b>right-click</b> aim &nbsp;·&nbsp; <b>click</b> shoot / punch &nbsp;·&nbsp; <b>R</b> reload &nbsp;·&nbsp; <b>C</b> weather &nbsp;·&nbsp; <b>T</b> time +2h &nbsp;·&nbsp; <b>L</b> story log &nbsp;·&nbsp; <b>Esc</b> pause &nbsp;·&nbsp; <b>drag</b> to look around &nbsp;·&nbsp; <b>walk south</b> to the beach &nbsp;·&nbsp; <b>glowing marker</b> starts a mission</div>
   <div id="busted-overlay">
     <div id="busted-text">BUSTED</div>
     <div id="busted-sub">Raka was caught — the heat is off... for now.</div>
@@ -202,6 +243,71 @@
   <div id="wasted-overlay">
     <div id="wasted-text">WASTED</div>
     <div id="wasted-sub">Raka went down — patched up and back on the avenue.</div>
+  </div>
+</div>
+
+<!-- Pause menu (step 12): outside #hud so its buttons take clicks. -->
+<div id="pause-menu">
+  <div id="pause-title">PAUSED</div>
+  <div id="pause-sub">SOLMAR HEAT — TAKE A BREATH</div>
+  <div id="pause-tabs">
+    <button class="pause-tab active" data-tab="map">MAP</button>
+    <button class="pause-tab" data-tab="story">STORY</button>
+    <button class="pause-tab" data-tab="stats">STATS</button>
+    <button class="pause-tab" data-tab="settings">SETTINGS</button>
+    <button class="pause-tab" data-tab="controls">CONTROLS</button>
+    <button class="pause-tab" data-tab="save">SAVE</button>
+  </div>
+  <div id="pause-body">
+    <div class="pause-page active" id="pause-page-map">
+      <canvas id="pause-map" width="440" height="440"></canvas>
+      <div id="pause-map-legend">⬜ Raka &nbsp;·&nbsp; <span style="color:#ffd94c">◆ mission target</span> &nbsp;·&nbsp; <span style="color:#ff3b2d">● police</span> &nbsp;·&nbsp; <span style="color:#9ac8e8">● rides</span> &nbsp;·&nbsp; <span style="color:#35e0ff">● boats</span> &nbsp;·&nbsp; <span style="color:#f2a0c0">● people</span></div>
+    </div>
+    <div class="pause-page" id="pause-page-story">
+      <div id="pause-story-list"></div>
+    </div>
+    <div class="pause-page" id="pause-page-stats">
+      <div id="pause-stats-list"></div>
+    </div>
+    <div class="pause-page" id="pause-page-settings">
+      <div class="pause-row"><span class="k">SOUND</span><button class="pause-btn ghost" id="set-sound">ON</button></div>
+      <div class="pause-row"><span class="k">GRAPHICS QUALITY</span><button class="pause-btn ghost" id="set-quality">HIGH</button></div>
+      <div class="pause-row"><span class="k">RESET PROGRESS</span><button class="pause-btn danger" id="set-reset">RESET</button></div>
+      <div id="set-reset-note">Clears every save slot and the settings, then restarts the game from the beginning. This cannot be undone.</div>
+    </div>
+    <div class="pause-page" id="pause-page-controls">
+      <div class="pause-row"><span class="k">MOVE</span><span class="v">WASD / Arrow keys</span></div>
+      <div class="pause-row"><span class="k">RUN / FAST SWIM</span><span class="v">Shift</span></div>
+      <div class="pause-row"><span class="k">JUMP / VAULT / CLIMB / DIVE</span><span class="v">Space</span></div>
+      <div class="pause-row"><span class="k">ENTER / EXIT RIDE</span><span class="v">E</span></div>
+      <div class="pause-row"><span class="k">AIM</span><span class="v">Hold right mouse</span></div>
+      <div class="pause-row"><span class="k">SHOOT / PUNCH</span><span class="v">Left click</span></div>
+      <div class="pause-row"><span class="k">RELOAD</span><span class="v">R</span></div>
+      <div class="pause-row"><span class="k">FISTS / PISTOL</span><span class="v">1 / 2</span></div>
+      <div class="pause-row"><span class="k">WEATHER</span><span class="v">C</span></div>
+      <div class="pause-row"><span class="k">TIME +2 HOURS</span><span class="v">T</span></div>
+      <div class="pause-row"><span class="k">STORY LOG</span><span class="v">L</span></div>
+      <div class="pause-row"><span class="k">PAUSE MENU</span><span class="v">Esc / P</span></div>
+      <div class="pause-row"><span class="k">LOOK AROUND</span><span class="v">Drag mouse</span></div>
+    </div>
+    <div class="pause-page" id="pause-page-save">
+      <div id="pause-save-list"></div>
+    </div>
+  </div>
+  <div id="pause-foot">
+    <button class="pause-btn" id="pause-resume">RESUME</button>
+    <span id="pause-hint">Esc / P to resume — the world waits while you read.</span>
+  </div>
+</div>
+
+<!-- Start overlay (step 12): shown only when a save exists. -->
+<div id="start-overlay">
+  <div id="start-title">SOLMAR <span class="heat">HEAT</span></div>
+  <div id="start-sub">SOLMAR BAY</div>
+  <div id="start-save-info"></div>
+  <div id="start-btns">
+    <button class="pause-btn" id="start-continue">CONTINUE</button>
+    <button class="pause-btn ghost" id="start-new">NEW GAME</button>
   </div>
 </div>
 

@@ -19,6 +19,7 @@ export function createInput(canvas, onOrbit) {
   let slot2Queued = false; // 2 pressed since the last takeSlot2() call (step 10)
   let skipQueued = false; // Esc pressed since the last takeSkip() call (step 11)
   let logQueued = false; // L pressed since the last takeLog() call (step 11)
+  let pauseQueued = false; // P pressed since the last takePause() call (step 12)
   let aiming = false; // right mouse held since the last pointer event
   let dragging = false;
   let clickCandidate = false; // left button down, not yet released: may be a click
@@ -43,6 +44,7 @@ export function createInput(canvas, onOrbit) {
     if (event.code === 'Digit2' && !event.repeat) slot2Queued = true;
     if (event.code === 'Escape' && !event.repeat) skipQueued = true;
     if (event.code === 'KeyL' && !event.repeat) logQueued = true;
+    if (event.code === 'KeyP' && !event.repeat) pauseQueued = true;
     keys.add(event.code);
   }
   function up(event) {
@@ -217,6 +219,30 @@ export function createInput(canvas, onOrbit) {
       const pressed = logQueued;
       logQueued = false;
       return pressed;
+    },
+    /** True once per P press, then clears: open or close the pause menu (step 12). */
+    takePause() {
+      const pressed = pauseQueued;
+      pauseQueued = false;
+      return pressed;
+    },
+    /**
+     * Step 12: throw away every queued press at once. The game loop calls
+     * this while the pause menu is open, so a Space or a click pressed
+     * over the menu never fires a jump or a shot the moment play resumes.
+     */
+    drain() {
+      actionQueued = false;
+      shotQueued = false;
+      reloadQueued = false;
+      weatherQueued = false;
+      timeQueued = false;
+      jumpQueued = false;
+      slot1Queued = false;
+      slot2Queued = false;
+      skipQueued = false;
+      logQueued = false;
+      pauseQueued = false;
     },
     /** True while the right mouse button is held: aim mode. */
     get aiming() {

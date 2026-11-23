@@ -163,6 +163,28 @@ export function createMissions(scene) {
     },
 
     /**
+     * Step 12: put a saved game's progress back. `done` is how many jobs
+     * were finished (0–4); the next job in the chain becomes active, or
+     * none when all four are done (the marker comes back, and touching
+     * it starts the chain over). The cash stays banked, as it was.
+     */
+    restore(savedCash, done) {
+      cash = Math.max(0, savedCash ?? 0);
+      nextIndex = Math.max(0, Math.min(MISSIONS.length, done ?? 0));
+      armed = false;
+      banner = null;
+      if (nextIndex >= MISSIONS.length) {
+        active = null;
+        startMarker.group.visible = true;
+        targetMarker.group.visible = false;
+      } else {
+        active = MISSIONS[nextIndex];
+        baselineHits = lastDummyHits;
+        startMarker.group.visible = false;
+      }
+    },
+
+    /**
      * Stage the mission screenshot: the Pier Run is in progress, its gold
      * marker standing at the north end of the avenue, Raka on foot below
      * it. The street stays staged around him.

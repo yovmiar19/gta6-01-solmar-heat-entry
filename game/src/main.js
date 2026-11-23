@@ -1,4 +1,4 @@
-// SOLMAR HEAT, step 5 — the entrypoint. It builds the renderer, the city,
+// SOLMAR HEAT, step 12 — the entrypoint. It builds the renderer, the city,
 // Raka, his Sunset GT and the third-person camera, then runs the loop: on
 // foot, read the input, move Raka camera-relative and chase him; near a ride,
 // E gets him in, and driving switches to arcade car controls with the camera
@@ -10,7 +10,10 @@
 // zooms in, a crosshair appears and the rounds fly truer, and Raka turns
 // to face where the camera looks so the crosshair tells the truth. His
 // health and stamina and the weapon readouts ride on the HUD, and while
-// driving the HUD names the ride he is in. With ?shot=chase|street|closeup|drive|shoot&seed=7 in the URL it stages
+// driving the HUD names the ride he is in. Esc (or P) pauses the world
+// and opens the pause menu — map, story, stats, settings, controls, save —
+// and the game saves to three slots in localStorage, plus an autosave
+// whenever a mission pays out. With ?shot=chase|street|closeup|drive|shoot&seed=7 in the URL it stages
 // one deterministic screenshot scene instead and holds the frame.
 
 import { createWorld } from './world.js';
@@ -29,6 +32,9 @@ import { createEnvironment } from './environment.js';
 import { createWater } from './water.js';
 import { createMovement } from './movement.js';
 import { createStory } from './story.js';
+import { createPause } from './pause.js';
+import { createSound } from './sound.js';
+import { listSaves, readSave, writeSave, clearSaves, latestSave } from './save.js';
 import { stageShot } from './shots.js';
 
 const WALK_SPEED = 3.2; // metres per second
@@ -91,8 +97,44 @@ const combat = createCombat(scene, hero, police, traffic, () => hud.showHit(), (
 const movement = createMovement(); // step 10: jump, vault, climb
 const input = createInput(canvas, (dx, dy) => chase.orbit(dx, dy));
 const story = createStory(hud, input); // step 11: cutscene dialogue
+const sound = createSound(); // step 12: a tiny WebAudio synth for shots and menus
 let introStarted = false; // step 11: the homecoming scene plays once, on load
 let cutsceneHint = false; // step 11: the dialogue hint line is showing
+let playSeconds = 0; // step 12: seconds played (the STATS tab shows it)
+
+// --- settings (step 12) ------------------------------------------------------
+// Sound on/off and graphics quality, kept in localStorage so a choice
+// survives a reload. A broken or foreign value falls back to the defaults.
+const SETTINGS_KEY = 'solmar-heat-settings';
+function loadSettings() {
+  try {
+    const raw = localStorage.getItem(SETTINGS_KEY);
+    const parsed = raw ? JSON.parse(raw) : null;
+    return {
+      sound: parsed?.sound !== false,
+      quality: parsed?.quality === 'low' ? 'low' : 'high',
+    };
+  } catch {
+    return { sound: true, quality: 'high' };
+  }
+}
+const settings = loadSettings();
+function persistSettings() {
+  try {
+    localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
+  } catch {
+    // Storage that refuses a write keeps the old settings; the game plays on.
+  }
+}
+/** Put the settings into effect: pixel ratio and shadows, rain and stars. */
+function applySettings() {
+  renderer.setPixelRatio(settings.quality === 'low' ? 1 : Math.min(window.devicePixelRatio, 2));
+  renderer.shadowMap.enabled = settings.quality !== 'low';
+  // Toggling shadows needs the materials to recompile, or nothing changes.
+  scene.traverse((o) => { if (o.material) o.material.needsUpdate = true; });
+  env.setQuality(settings.quality);
+  sound.setMuted(!settings.sound);
+}
 
 // --- driving state ----------------------------------------------------------
 let driving = false;
@@ -306,6 +348,120 @@ function radarState() {
   };
 }
 
+// --- save and load (step 12) -------------------------------------------------
+/**
+ * Gather the game's state into a save object: cash, mission progress,
+ * the story beats seen, where Raka stands, the clock and the weather,
+ * his health and stamina, the heat, his weapon, and the play time.
+ * The rides are not saved: on a load the Sunset GT waits in its parking
+ * spot and Raka steps out on foot where he saved.
+ */
+function collectSaveData() {
+  return {
+    version: 1,
+    savedAt: Date.now(),
+    cash: missions.cash,
+    completedCount: missions.completedCount,
+    storyLog: story.log,
+    hero: { x: hero.group.position.x, z: hero.group.position.z, yaw: hero.yaw },
+    time: env.hours,
+    timeText: env.clockText,
+    weather: env.weather,
+    health: vitals.health,
+    stamina: vitals.stamina,
+    wanted: police.wanted,
+    weaponSlot: combat.slot,
+    playSeconds,
+  };
+}
+
+/**
+ * Put a save back into the game. Raka steps out on foot where he saved,
+ * with a fresh loadout of ammo; the story log picks up where it left
+ * off, and the homecoming scene does not replay — it was already lived.
+ */
+function applySave(data) {
+  if (driving) exitVehicle();
+  missions.restore(data.cash ?? 0, data.completedCount ?? 0);
+  story.restoreLog(data.storyLog ?? []);
+  const hx = data.hero?.x ?? 0;
+  const hz = data.hero?.z ?? 10;
+  const hyaw = data.hero?.yaw ?? Math.PI;
+  hero.group.position.set(hx, 0, hz);
+  hero.group.visible = true;
+  hero.face(hyaw);
+  hero.group.rotation.y = hyaw;
+  movement.snapTo(world.groundHeightAt(hx, hz));
+  speed = 0;
+  if (typeof data.time === 'number') env.setTime(data.time);
+  if (typeof data.weather === 'string') env.setWeather(data.weather);
+  vitals.setHealth(data.health ?? 100);
+  vitals.setStamina(data.stamina ?? 100);
+  police.setWanted(Math.max(0, Math.min(5, data.wanted ?? 0)));
+  combat.selectSlot(data.weaponSlot === 1 ? 1 : 2);
+  playSeconds = data.playSeconds ?? 0;
+  introStarted = true;
+  hud.setCash(missions.cash);
+  hud.setMission(
+    missions.active ? missions.active.name : null,
+    missions.active ? missions.active.objective : null,
+  );
+  hud.setWanted(police.wanted);
+  hud.setHealth(vitals.health, vitals.maxHealth);
+  hud.setStamina(vitals.stamina, vitals.maxStamina);
+}
+
+// --- the pause menu (step 12) -------------------------------------------------
+// The menu reads the world through callbacks and hands choices back the
+// same way; the game loop owns when it opens and closes.
+const pause = createPause({
+  getMapState: () => radarState(),
+  getStats: () => ({
+    cash: missions.cash,
+    completed: missions.completedCount,
+    total: 4,
+    activeName: missions.active ? missions.active.name : null,
+    wanted: police.wanted,
+    health: vitals.health,
+    stamina: vitals.stamina,
+    beats: story.log.length,
+    playSeconds,
+    clockText: env.clockText,
+    phase: env.phase,
+    weather: env.weather,
+  }),
+  getStoryLog: () => story.log,
+  settings,
+  onSettingChange: (key, value) => {
+    settings[key] = value;
+    persistSettings();
+    applySettings();
+  },
+  listSaves: () => listSaves(),
+  onSave: (slot) => {
+    const data = collectSaveData();
+    writeSave(slot, data);
+    return data;
+  },
+  onLoad: (slot) => {
+    const data = readSave(slot);
+    if (!data) return false;
+    applySave(data);
+    return true;
+  },
+  onReset: () => {
+    clearSaves();
+    try {
+      localStorage.removeItem(SETTINGS_KEY);
+    } catch {
+      // Storage that refuses the removal keeps the old settings; the reload still restarts.
+    }
+    window.location.reload();
+  },
+  sound,
+});
+applySettings();
+
 // A screenshot scene freezes the pose and holds the frame; play mode moves.
 const shotFocus = shotName ? stageShot(shotName, hero, chase, car, police, traffic) : null;
 const frozen = shotFocus !== null;
@@ -342,8 +498,51 @@ if (frozen) {
   hud.setWeapon(combat.weaponName, combat.weaponType, combat.mag, combat.reserve, combat.reloading);
 }
 
+// --- the start overlay (step 12) ---------------------------------------------
+// When a save exists, the player picks CONTINUE (the newest save) or NEW
+// GAME before the world runs. Staged screenshot frames and the test
+// harness (?story=0) never see it: they always start fresh.
+const startOverlayEl = document.getElementById('start-overlay');
+const startInfoEl = document.getElementById('start-save-info');
+let startPending = false;
+const newestSave = !storyOff && !frozen ? latestSave() : null;
+if (newestSave) {
+  startPending = true;
+  const d = newestSave.data;
+  startInfoEl.innerHTML = `Last save — <b>$${(d.cash ?? 0).toLocaleString('en-US')}</b> · ${d.completedCount ?? 0} / 4 missions · ${d.timeText ?? ''} ${d.weather ?? ''}`;
+  startOverlayEl.style.display = 'flex';
+}
+document.getElementById('start-continue').addEventListener('click', () => {
+  sound.click();
+  if (newestSave) {
+    applySave(newestSave.data);
+    startOverlayEl.style.display = 'none';
+    startPending = false;
+  }
+});
+document.getElementById('start-new').addEventListener('click', () => {
+  sound.click();
+  startOverlayEl.style.display = 'none';
+  startPending = false;
+});
+
 // --- movement ----------------------------------------------------------------
 function step(dt) {
+  // Step 12: the start overlay waits for a choice before the world runs.
+  if (startPending) return;
+  // Step 12: pause — Esc/P toggles, but never during a cutscene (there
+  // Esc skips the dialogue instead). While paused the world is frozen:
+  // no clock, no weather, no traffic, no missions. Presses made over the
+  // menu are drained, so a Space or a click over the menu never fires a
+  // jump or a shot the moment play resumes.
+  if (!story.playing && (input.takePause() || input.takeSkip())) {
+    pause.toggle();
+  }
+  if (pause.open) {
+    input.drain();
+    return;
+  }
+
   world.update(dt);
   // Step 8: C turns the weather (clear → rain → fog → storm), T jumps the
   // clock two hours ahead. Both work on foot and behind the wheel. They run
@@ -405,6 +604,9 @@ function step(dt) {
   // radar keeps drawing, and the mission marker keeps pulsing. Space or a
   // click moves the dialogue on, Esc skips the scene.
   if (story.playing) {
+    // A P pressed mid-scene is dropped: it must not open the pause menu
+    // the moment the scene ends.
+    input.takePause();
     if (!cutsceneHint) {
       cutsceneHint = true;
       hud.setHint('<b>Space</b> / <b>click</b> continue dialogue &nbsp;·&nbsp; <b>Esc</b> skip scene');
@@ -646,8 +848,13 @@ function step(dt) {
     if (input.takeSlot1()) combat.selectSlot(1);
     if (input.takeSlot2()) combat.selectSlot(2);
     if (!swimming && input.takeShot()) {
-      if (combat.slot === 1) combat.punch();
-      else combat.shoot(aiming);
+      if (combat.slot === 1) {
+        combat.punch();
+        sound.punch();
+      } else {
+        combat.shoot(aiming);
+        sound.shot();
+      }
     }
     if (!swimming && input.takeReload()) combat.reload();
 
@@ -722,13 +929,21 @@ function step(dt) {
     vehicles: traffic.vehicles,
   });
   const banner = missions.takeBanner();
-  if (banner) hud.showMissionBanner(banner);
+  if (banner) {
+    hud.showMissionBanner(banner);
+    sound.chime();
+  }
   // Step 11: a job that just paid out gets its last word, and a job that
   // just started gets its intro — in that order, queued behind each
   // other. The last job pays out into the all-jobs-done line as well.
   if (!storyOff && missions.cash > wasCash && wasActiveId) {
     story.play(`done-${wasActiveId}`);
     if (wasActiveId === 'heat') story.play('done-all');
+  }
+  // Step 12: a payout autosaves, so a crash never eats a finished job.
+  // It runs even with the story switched off — a payout is a payout.
+  if (missions.cash > wasCash && wasActiveId) {
+    writeSave('auto', collectSaveData());
   }
   const nowActiveId = missions.active ? missions.active.id : null;
   if (!storyOff && nowActiveId && nowActiveId !== wasActiveId) {
@@ -742,6 +957,9 @@ function step(dt) {
 
   // --- the radar: Raka, the heat, the street and the mission target --------
   radar.update(radarState());
+  // Step 12: the play clock only runs while the world does — never while
+  // paused, never on a frozen frame, never mid-cutscene.
+  playSeconds += dt;
 }
 
 // --- the loop -----------------------------------------------------------------
@@ -845,6 +1063,18 @@ window.__solmar = {
   get storyPlaying() { return story.playing; },
   /** Step 11: the story beats seen so far. */
   get storyLog() { return story.log; },
+  /** Step 12: true while the pause menu is open (the world is frozen). */
+  get paused() { return pause.open; },
+  /** Step 12: the pause tab showing now. */
+  get pauseTab() { return pause.tab; },
+  /** Step 12: the sound setting (true = sound on) and the graphics quality. */
+  get soundOn() { return settings.sound; },
+  get soundMuted() { return sound.muted; },
+  get quality() { return settings.quality; },
+  /** Step 12: seconds played in this session (and in loaded saves). */
+  get playSeconds() { return playSeconds; },
+  /** Step 12: true while the start overlay waits for CONTINUE or NEW GAME. */
+  get startPending() { return startPending; },
   /** Step 9: the boats' spots, for the test harness. */
   get boats() {
     return water.boats.map((b) => ({
@@ -1055,6 +1285,45 @@ window.__solmar = {
     skipStory() { story.skipAll(); },
     /** Step 11: open or close the story log panel. */
     toggleStoryLog() { return story.toggleLog(); },
+    /** Step 12: open the pause menu at once (as if Raka pressed Esc). */
+    openPause() {
+      if (!pause.open) pause.toggle();
+      return pause.open;
+    },
+    /** Step 12: close the pause menu at once. */
+    closePause() {
+      if (pause.open) pause.toggle();
+      return pause.open;
+    },
+    /** Step 12: switch the pause menu to a tab at once. */
+    pauseTab(name) { return pause.openTab(name); },
+    /** Step 12: the pause menu's state (for the test harness). */
+    pauseState() {
+      return {
+        open: pause.open,
+        tab: pause.tab,
+        display: document.getElementById('pause-menu').style.display,
+      };
+    },
+    /** Step 12: save the game into a slot at once (1 | 2 | 3 | 'auto'). */
+    saveTo(slot) {
+      const data = collectSaveData();
+      return writeSave(slot, data) ? data : null;
+    },
+    /** Step 12: load a slot at once. */
+    loadFrom(slot) {
+      const data = readSave(slot);
+      if (!data) return false;
+      applySave(data);
+      return true;
+    },
+    /** Step 12: set a setting at once ('sound' true/false, 'quality' 'high'/'low'). */
+    setSetting(key, value) {
+      settings[key] = value;
+      persistSettings();
+      applySettings();
+      return settings[key];
+    },
     /** Put Raka (or the ride he is driving) beside the active target. */
     toTarget() {
       const t = missions.target;

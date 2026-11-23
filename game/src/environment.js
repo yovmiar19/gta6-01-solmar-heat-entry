@@ -138,9 +138,9 @@ export function createEnvironment(scene, world) {
   });
   const stars = new THREE.Points(starGeo, starMat);
   stars.frustumCulled = false;
-  // A star is a dot of light, not a thing: the raycaster tests Points
-  // too (anything within 1 m counts as a hit), so a round could "land"
-  // on a star and never reach the dummy. Switch the test off for them.
+  // Stars are light, not matter: the raycaster counts Points too (a
+  // hit within 1 m), so a shot could "land" on a star far above the
+  // city and never reach the dummy. Turn the test off for them.
   stars.raycast = () => {};
   scene.add(stars);
 
@@ -167,9 +167,9 @@ export function createEnvironment(scene, world) {
   });
   const rain = new THREE.Points(rainGeo, rainMat);
   rain.frustumCulled = false;
-  // The rain box trails the player, so drops are always right by the
-  // muzzle: a round would "hit" a drop a hand's breadth out and stop
-  // there, never reaching anything solid. Rain is weather, not a wall.
+  // The rain box follows the player, so drops hover right by the muzzle:
+  // a round would "hit" a drop a hand's breadth out and stop there,
+  // never reaching anything solid. Rain is weather, not a wall.
   rain.raycast = () => {};
   scene.add(rain);
 
@@ -181,7 +181,8 @@ export function createEnvironment(scene, world) {
   });
   const bolt = new THREE.Line(boltGeo, boltMat);
   bolt.frustumCulled = false;
-  bolt.raycast = () => {}; // a flash of light, not a wall: rounds fly past it
+  // The bolt is a flash of light, not a wall: rounds fly straight past it.
+  bolt.raycast = () => {};
   scene.add(bolt);
 
   function strikeBolt(playerX, playerZ) {
@@ -409,6 +410,15 @@ export function createEnvironment(scene, world) {
     /** Jump the clock ahead by `by` hours (the T key: +2). */
     advanceTime(by) {
       hours = (hours + by) % 24;
+    },
+    /**
+     * Step 12: graphics quality. LOW draws fewer rain drops and stars
+     * (a quarter of each); HIGH draws them all. The buffers never
+     * change, only how many of them the renderer draws.
+     */
+    setQuality(q) {
+      rainGeo.setDrawRange(0, q === 'low' ? 400 : RAIN_COUNT);
+      starGeo.setDrawRange(0, q === 'low' ? 120 : starCount);
     },
     /**
      * One frame. `state` carries the player position (the rain follows it),

@@ -35,6 +35,11 @@ export function createVitals() {
       health = Math.max(0, health - amount);
     },
 
+    /** Set the health at once (a load puts back what the save held). */
+    setHealth(value) {
+      health = Math.max(0, Math.min(MAX_HEALTH, value));
+    },
+
     /** Set the stamina at once (the test harness drains it for the drown check). */
     setStamina(value) {
       stamina = Math.max(0, Math.min(MAX_STAMINA, value));

@@ -11,6 +11,7 @@
 // (an intro, a mission's intro, a completion line) and they play in
 // order. Every scene that starts is written into the story log, which
 // the player can open with L to see the beats they have already lived.
+// Step 12: a saved game's log can be put back with restoreLog().
 
 const TYPE_SPEED = 45; // characters per second the typewriter reveals
 
@@ -369,6 +370,24 @@ export function createStory(hud, input) {
       if (logEl) logEl.style.display = logOpen ? 'block' : 'none';
       if (logOpen) renderLog();
       return logOpen;
+    },
+
+    /**
+     * Step 12: put a saved game's beats back into the log (a load).
+     * Only beats with a title and a line are kept, in the saved order.
+     * The mission panel shows the last beat again, so the story picks up
+     * where it left off instead of going blank.
+     */
+    restoreLog(beats) {
+      log.length = 0;
+      for (const b of beats ?? []) {
+        if (b && typeof b.title === 'string' && typeof b.line === 'string') {
+          log.push({ title: b.title, line: b.line });
+        }
+      }
+      if (log.length > 0 && hud.setStoryBeat) hud.setStoryBeat(log[log.length - 1].title);
+      renderLog();
+      return log.length;
     },
 
     /**
