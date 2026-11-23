@@ -1,11 +1,14 @@
-// The screenshot scenes behind ?shot=chase|pursuit|closeup|drive. Each one
-// puts Raka, the car and the camera on fixed, deterministic spots (the world
-// is seeded, so the same seed always gives the same frame) and freezes the
-// pose, so the frame is what the game really looks like and a screenshot of
-// it is reproducible. The cover is the chase shot: Raka walking north up the
-// main avenue toward his parked Sunset GT, the camera behind him in third
+// The screenshot scenes behind ?shot=chase|pursuit|closeup|drive|shoot. Each
+// one puts Raka, the car and the camera on fixed, deterministic spots (the
+// world is seeded, so the same seed always gives the same frame) and freezes
+// the pose, so the frame is what the game really looks like and a screenshot
+// of it is reproducible. The cover is the chase shot: Raka walking north up
+// the main avenue toward his parked Sunset GT, the camera behind him in third
 // person. The pursuit shot stages the chase: the Sunset GT rolling north with
-// three patrol cars on its tail and the helicopter overhead at 3 stars.
+// three patrol cars on its tail and the helicopter overhead at 3 stars. The
+// shoot shot stages combat: Raka aiming his Pistol at the practice dummy on
+// the avenue, a tracer in the air, the survival panel showing health,
+// stamina, weapon and ammo.
 
 const SHOTS = {
   // The cover: third person, Raka walking into the city, his car ahead.
@@ -21,6 +24,10 @@ const SHOTS = {
   // Driving: the Sunset GT rolling north down the avenue, camera chasing it
   // from the south-west so the golden-hour sun lights its orange flank.
   drive: { hero: null, car: [0, -8], carYaw: Math.PI, cam: [-0.35, 0.3, 8.5] },
+  // Shooting: Raka on the avenue aiming his Pistol north at the practice
+  // dummy, the camera close behind his right shoulder so he reads large and
+  // the dummy sits ahead of him in the frame.
+  shoot: { hero: [0, 10], face: Math.PI, phase: 0, lean: 0, cam: [0.35, 0.24, 4.8], car: [2.2, 4.5], aim: true },
 };
 
 /**
@@ -48,6 +55,8 @@ export function stageShot(name, hero, camera, car, police) {
     // Face at once (no smooth turn) so the staged frame is exact.
     hero.group.rotation.y = shot.face;
     hero.setPose(shot.phase, shot.lean);
+    // The shooting scene holds the aim pose: the right arm points forward.
+    if (shot.aim) hero.aim(true);
     hero.group.visible = true;
   } else {
     // The drive and pursuit shots are about the car: Raka is inside it.

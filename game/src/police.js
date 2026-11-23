@@ -17,6 +17,8 @@ const BUST_TIME_CAR = 2.5; // seconds boxed in while driving
 const CAR_RADIUS = 1.6; // collision circle around a police car
 const RAM_RANGE = 2.6; // a police car this close rams the player's car
 const RAM_COOLDOWN = 0.6; // seconds between rams from the same chase
+const RAM_DAMAGE = 12; // health a ram costs Raka, jolted in his seat
+const PIN_DAMAGE = 25; // health a second while a patrol car sits on Raka on foot
 const POLICE_TOP = 17; // base top speed; +1 per star, so they keep up
 const HELI_HEIGHT = 26; // how high the helicopter circles
 const HELI_RADIUS = 14; // how wide its circle is around the player
@@ -60,6 +62,7 @@ function angleDelta(from, to) {
 /** One patrol car: black body, white doors and roof, a flashing light bar. */
 function createPatrolCar() {
   const group = new THREE.Group();
+  group.userData.policeCar = true; // the combat raycast knows what it hit
 
   // --- body: black shell, white doors, white roof, dark glass --------------
   group.add(pbox(1.9, 0.55, 4.4, BODY_BLACK, 0, 0.55, 0));
@@ -201,6 +204,7 @@ function createPatrolCar() {
 /** The helicopter: a dark fuselage with a spinning rotor and a searchlight. */
 function createHelicopter() {
   const group = new THREE.Group();
+  group.userData.helicopter = true; // the combat raycast knows what it hit
   group.add(pbox(2.2, 1.0, 3.2, 0x20262e, 0, 0, 0)); // fuselage
   group.add(pbox(1.6, 0.7, 1.0, GLASS, 0, 0.2, 1.4, { roughness: 0.15, metalness: 0.5 })); // glass nose
   group.add(pbox(0.4, 0.4, 3.4, 0x20262e, 0, 0.3, -2.8)); // tail boom
@@ -349,6 +353,12 @@ export function createPolice(scene, world) {
       quietTime = 0;
       earnStar();
     },
+    /** A round fired at a patrol car: shooting the police is a crime too. */
+    noteShooting() {
+      if (busted) return;
+      quietTime = 0;
+      earnStar();
+    },
     /** Set the wanted level at once (tests and screenshot staging). */
     setWanted(n) {
       wanted = Math.max(0, Math.min(MAX_WANTED, n));
@@ -403,13 +413,16 @@ export function createPolice(scene, world) {
      * One frame: cool the heat down when the player lays low and out of
      * sight, keep the right number of patrol cars on the road, chase the
      * player, ram the car when close, and call the bust when a car pins them.
+     * Returns the health the police cost Raka this frame (a ram while
+     * driving, a patrol car sitting on him on foot).
      */
     update(dt, player) {
-      if (busted) return;
+      if (busted) return 0;
       flashTime += dt;
       cooldown = Math.max(0, cooldown - dt);
       quietTime += dt;
       ramTimer = Math.max(0, ramTimer - dt);
+      let damage = 0;
 
       // --- cooling off: no crime for a while and no police car close -------
       if (wanted > 0 && quietTime > DECAY_QUIET) {
@@ -444,9 +457,14 @@ export function createPolice(scene, world) {
         car.chase(dt, player.x, player.z, topSpeed, world, closePace);
         car.flash(flashTime);
         const d = Math.hypot(car.group.position.x - player.x, car.group.position.z - player.z);
-        if (d < BUST_RANGE) pinned = true;
+        if (d < BUST_RANGE) {
+          pinned = true;
+          // On foot a patrol car sitting on Raka hurts him, second by second.
+          if (!player.driving) damage += PIN_DAMAGE * dt;
+        }
         if (player.driving && player.car && d < RAM_RANGE && ramTimer <= 0) {
           player.car.ram();
+          damage += RAM_DAMAGE;
           ramTimer = RAM_COOLDOWN;
         }
       }
@@ -463,6 +481,7 @@ export function createPolice(scene, world) {
       } else {
         bustTimer = 0;
       }
+      return damage;
     },
   };
 }

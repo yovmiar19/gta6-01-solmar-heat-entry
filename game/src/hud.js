@@ -1,7 +1,11 @@
-// The step-2 HUD: on foot it shows what Raka is doing (idle / walking /
+// The step-4 HUD: on foot it shows what Raka is doing (idle / walking /
 // running) and how fast; in the car it shows DRIVING and the car's speed.
-// It also carries the action prompt ("Press E to enter the Sunset GT").
-// The minimap, money, wanted stars and missions come in later steps.
+// It also carries the action prompt ("Press E to enter the Sunset GT"), the
+// wanted stars, the BUSTED overlay — and, since step 4, the survival panel
+// (bottom-right): Raka's HEALTH and STAMINA bars with their numbers, his
+// current WEAPON with its TYPE, and the BULLET COUNT (magazine / reserve).
+// A hit marker flashes in the middle of the screen when a round lands, and
+// a WASTED overlay covers the screen when his health runs out.
 
 const FOOT_TOP_KMH = 21; // the fastest the pace bar ever fills to on foot
 const CAR_TOP_KMH = 80; // the fastest it fills to while driving
@@ -17,8 +21,22 @@ export function createHud() {
   const wantedBoxEl = document.getElementById('wanted-box');
   const wantedStarsEl = document.getElementById('wanted-stars');
   const bustedEl = document.getElementById('busted-overlay');
+  const wastedEl = document.getElementById('wasted-overlay');
+  const healthBarEl = document.getElementById('health-bar');
+  const healthNumEl = document.getElementById('health-num');
+  const staminaBarEl = document.getElementById('stamina-bar');
+  const staminaNumEl = document.getElementById('stamina-num');
+  const weaponNameEl = document.getElementById('weapon-name');
+  const weaponTypeEl = document.getElementById('weapon-type');
+  const ammoEl = document.getElementById('ammo-num');
+  const hitmarkerEl = document.getElementById('hitmarker');
   let lastState = '';
   let lastWanted = -1;
+  let lastHealth = -1;
+  let lastStamina = -1;
+  let lastAmmo = '';
+  let lastWeapon = '';
+  let hitTimer = null;
 
   function showSpeed(kmh, top) {
     speedEl.textContent = String(kmh);
@@ -84,6 +102,59 @@ export function createHud() {
     /** Show or hide the big BUSTED overlay in the middle of the screen. */
     showBusted(show) {
       bustedEl.style.display = show ? 'flex' : 'none';
+    },
+    /** Show or hide the big WASTED overlay (health ran out). */
+    showWasted(show) {
+      wastedEl.style.display = show ? 'flex' : 'none';
+    },
+    /**
+     * Refresh the HEALTH bar and number (0–max). The bar turns from green
+     * to red as it falls, so a glance says how hurt Raka is.
+     */
+    setHealth(health, max) {
+      const shown = Math.round(health);
+      if (shown === lastHealth) return;
+      lastHealth = shown;
+      healthNumEl.textContent = String(shown);
+      healthBarEl.style.width = `${Math.max(0, Math.min(100, (health / max) * 100)).toFixed(0)}%`;
+      healthBarEl.style.background = health / max > 0.5 ? '#7ed957'
+        : health / max > 0.25 ? '#f2c94c' : '#ff4d3d';
+    },
+    /**
+     * Refresh the STAMINA bar and number (0–max). It drains while Raka runs
+     * and grows back while he walks or stands still.
+     */
+    setStamina(stamina, max) {
+      const shown = Math.round(stamina);
+      if (shown === lastStamina) return;
+      lastStamina = shown;
+      staminaNumEl.textContent = String(shown);
+      staminaBarEl.style.width = `${Math.max(0, Math.min(100, (stamina / max) * 100)).toFixed(0)}%`;
+    },
+    /**
+     * Refresh the WEAPON readouts: the weapon's NAME ("Pistol"), its TYPE
+     * ("Handgun") and the BULLET COUNT as magazine / reserve ("12 / 24").
+     * While a reload runs the count reads "RELOADING…".
+     */
+    setWeapon(name, type, mag, reserve, reloading) {
+      const key = `${name}|${type}`;
+      if (key !== lastWeapon) {
+        weaponNameEl.textContent = name;
+        weaponTypeEl.textContent = type;
+        lastWeapon = key;
+      }
+      const ammo = reloading ? 'RELOADING…' : `${mag} / ${reserve}`;
+      if (ammo !== lastAmmo) {
+        ammoEl.textContent = ammo;
+        ammoEl.classList.toggle('empty', !reloading && mag === 0);
+        lastAmmo = ammo;
+      }
+    },
+    /** Flash the hit marker in the middle of the screen: a round landed. */
+    showHit() {
+      hitmarkerEl.style.opacity = '1';
+      if (hitTimer) clearTimeout(hitTimer);
+      hitTimer = setTimeout(() => { hitmarkerEl.style.opacity = '0'; }, 150);
     },
   };
 }

@@ -66,6 +66,7 @@ export function createProtagonist() {
   let targetYaw = yaw;
   let walkPhase = 0;
   let idleTime = 0;
+  let aiming = false; // the right arm points forward (shooting), held by the game loop
 
   /** Shortest signed angle from `from` to `to` (so the turn never spins the long way). */
   function angleDelta(from, to) {
@@ -81,6 +82,16 @@ export function createProtagonist() {
     get yaw() { return yaw; },
     /** Ask Raka to face a direction; he turns smoothly toward it. */
     face(directionYaw) { targetYaw = directionYaw; },
+    /** Hold the aim pose (right arm forward, as if holding the pistol) or drop it. */
+    aim(on) {
+      aiming = on;
+      // Apply at once, so a staged screenshot holds the pose even when the
+      // animation never runs (the frozen frame); the live loop re-applies it
+      // every frame anyway.
+      if (on) armR.rotation.x = -1.5;
+    },
+    /** True while Raka is holding the aim pose. */
+    get aiming() { return aiming; },
     /** Freeze the pose (used by the screenshot scenes). */
     setPose(phase, lean) {
       walkPhase = phase;
@@ -105,16 +116,18 @@ export function createProtagonist() {
         legL.rotation.x = Math.sin(walkPhase) * 0.55 * swing;
         legR.rotation.x = -Math.sin(walkPhase) * 0.55 * swing;
         armL.rotation.x = -Math.sin(walkPhase) * 0.45 * swing;
-        armR.rotation.x = Math.sin(walkPhase) * 0.45 * swing;
+        // Aiming holds the right arm forward (the pistol); otherwise it swings.
+        armR.rotation.x = aiming ? -1.5 : Math.sin(walkPhase) * 0.45 * swing;
         // A slight forward lean at a run.
         body.rotation.x = speed > 5 ? 0.1 : 0.03;
         // A small vertical bob with each step.
         group.position.y = Math.abs(Math.sin(walkPhase)) * 0.05;
       } else {
-        // Idle: limbs settle, breathing bob.
+        // Idle: limbs settle, breathing bob. The aim pose holds through it.
         idleTime += dt;
         legL.rotation.x *= 0.8; legR.rotation.x *= 0.8;
-        armL.rotation.x *= 0.8; armR.rotation.x *= 0.8;
+        armL.rotation.x *= 0.8;
+        armR.rotation.x = aiming ? -1.5 : armR.rotation.x * 0.8;
         body.rotation.x *= 0.8;
         group.position.y = Math.sin(idleTime * 2) * 0.015;
       }

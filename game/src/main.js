@@ -1,15 +1,19 @@
-// SOLMAR HEAT, step 2 — the entrypoint. It builds the renderer, the city,
+// SOLMAR HEAT, step 4 — the entrypoint. It builds the renderer, the city,
 // Raka, his Sunset GT and the third-person camera, then runs the loop: on
 // foot, read the input, move Raka camera-relative and chase him; near the car,
 // E gets him in, and driving switches to arcade car controls with the camera
 // easing in behind the car. E again, stopped, gets him back out beside it.
-// With ?shot=chase|street|closeup|drive&seed=7 in the URL it stages one
-// deterministic screenshot scene instead and holds the frame.
+// On foot a click fires his Pistol and R reloads it; his health and stamina
+// and the weapon readouts ride on the HUD. With ?shot=chase|street|closeup|
+// drive|shoot&seed=7 in the URL it stages one deterministic screenshot scene
+// instead and holds the frame.
 
 import { createWorld } from './world.js';
 import { createProtagonist } from './character.js';
 import { createCar } from './car.js';
 import { createPolice } from './police.js';
+import { createCombat } from './combat.js';
+import { createVitals } from './vitals.js';
 import { createChaseCamera } from './camera.js';
 import { createInput } from './input.js';
 import { createHud } from './hud.js';
@@ -22,6 +26,7 @@ const FOOT_CAM_DISTANCE = 5.5;
 const CAR_CAM_DISTANCE = 8.5;
 const SPEED_LIMIT = 14; // metres per second, about 50 km/h: over it is a crime
 const BUSTED_HOLD = 2.5; // seconds the BUSTED screen stays up before respawn
+const WASTED_HOLD = 2.5; // seconds the WASTED screen stays up before respawn
 
 const params = new URLSearchParams(window.location.search);
 const seed = Number.parseInt(params.get('seed') || '7', 10) || 7;
@@ -56,6 +61,8 @@ const police = createPolice(scene, world);
 
 const chase = createChaseCamera(camera);
 const hud = createHud();
+const vitals = createVitals();
+const combat = createCombat(scene, hero, police, () => hud.showHit());
 const input = createInput(canvas, (dx, dy) => chase.orbit(dx, dy));
 
 // --- driving state ----------------------------------------------------------
@@ -75,6 +82,17 @@ function startBusted() {
   hud.showBusted(true);
 }
 
+// WASTED: Raka's health ran out. Controls freeze, the WASTED screen goes up,
+// and after a beat he is patched up and back at the start, full health.
+let wasted = false;
+let wastedTimer = 0;
+
+function startWasted() {
+  wasted = true;
+  wastedTimer = 0;
+  hud.showWasted(true);
+}
+
 function respawn() {
   driving = false;
   car.halt();
@@ -87,12 +105,17 @@ function respawn() {
   speed = 0;
   lastCarHits = car.hits;
   police.reset();
+  vitals.reset();
+  combat.reset();
   chase.setDistance(FOOT_CAM_DISTANCE);
   hud.setWanted(0);
   hud.showBusted(false);
+  hud.showWasted(false);
   hud.setPrompt(null);
   busted = false;
   bustedTimer = 0;
+  wasted = false;
+  wastedTimer = 0;
 }
 
 function enterCar() {
@@ -125,7 +148,8 @@ const shotFocus = shotName ? stageShot(shotName, hero, chase, car, police) : nul
 const frozen = shotFocus !== null;
 if (frozen) {
   // The HUD reads for the staged frame: the drive shot shows the car rolling,
-  // the pursuit shot shows the chase at 3 wanted stars.
+  // the pursuit shot shows the chase at 3 wanted stars, the shoot shot shows
+  // Raka aiming with one round already down the range (11 in the magazine).
   if (shotName === 'drive') {
     hud.updateDriving(11); // about 40 km/h, mid-avenue
     hud.setPrompt(null);
@@ -133,10 +157,17 @@ if (frozen) {
     hud.updateDriving(11); // about 40 km/h, fleeing the patrol cars
     hud.setWanted(3);
     hud.setPrompt(null);
+  } else if (shotName === 'shoot') {
+    combat.stageShoot(); // tracer held on the frame, magazine 11 / 24
+    hud.updateFoot(0, false, false);
+    hud.setPrompt(null);
   } else {
     hud.updateFoot(0, false, false);
     hud.setPrompt(null);
   }
+  hud.setHealth(vitals.health, vitals.maxHealth);
+  hud.setStamina(vitals.stamina, vitals.maxStamina);
+  hud.setWeapon(combat.weaponName, combat.weaponType, combat.mag, combat.reserve, combat.reloading);
 }
 
 // --- movement ----------------------------------------------------------------
@@ -156,6 +187,14 @@ function step(dt) {
     return;
   }
 
+  // Wasted: the same freeze, on the WASTED screen; after a beat he is patched
+  // up and back at the start with full health.
+  if (wasted) {
+    wastedTimer += dt;
+    if (wastedTimer >= WASTED_HOLD) respawn();
+    return;
+  }
+
   if (driving) {
     // --- behind the wheel ---------------------------------------------------
     car.update(dt, input, world);
@@ -169,7 +208,10 @@ function step(dt) {
     const f = input.forward;
     const s = input.strafe;
     const moving = input.moving;
-    const running = input.running;
+    // Running needs stamina: run dry and he is winded, walking only until
+    // it has come back a little.
+    const running = input.running && vitals.canRun;
+    vitals.update(dt, running && moving);
 
     // Camera-relative move direction on the ground.
     const forward = chase.forward();
@@ -198,6 +240,10 @@ function step(dt) {
     chase.update(dt, hero.group.position, false);
     hud.updateFoot(speed, moving, running);
 
+    // --- the Pistol: a click fires, R reloads --------------------------------
+    if (input.takeShot()) combat.shoot();
+    if (input.takeReload()) combat.reload();
+
     // --- the car: near it, E gets in ----------------------------------------
     const nearCar = Math.hypot(
       hero.group.position.x - car.group.position.x,
@@ -206,6 +252,14 @@ function step(dt) {
     hud.setPrompt(nearCar ? 'Press E to enter the Sunset GT' : null);
     if (input.takeAction() && nearCar) enterCar();
   }
+
+  // --- combat timers (cooldown, reload, tracer, flash, spark) ---------------
+  combat.update(dt);
+
+  // --- the survival readouts: health, stamina, weapon, bullets --------------
+  hud.setHealth(vitals.health, vitals.maxHealth);
+  hud.setStamina(vitals.stamina, vitals.maxStamina);
+  hud.setWeapon(combat.weaponName, combat.weaponType, combat.mag, combat.reserve, combat.reloading);
 
   // --- the heat: crimes, the chase, the bust --------------------------------
   // Speeding and smashing into buildings earn stars; the patrol cars answer
@@ -220,9 +274,11 @@ function step(dt) {
   const player = driving
     ? { x: car.group.position.x, z: car.group.position.z, driving: true, speed: car.speed, car }
     : { x: hero.group.position.x, z: hero.group.position.z, driving: false, speed, car: null };
-  police.update(dt, player);
+  const damage = police.update(dt, player);
+  if (damage > 0) vitals.damage(damage);
   hud.setWanted(police.wanted);
   if (police.busted) startBusted();
+  else if (vitals.wasted) startWasted();
 }
 
 // --- the loop -----------------------------------------------------------------
@@ -249,7 +305,17 @@ window.__solmar = {
   get wanted() { return police.wanted; },
   get policeCount() { return police.count; },
   get busted() { return busted; },
-  hero, car, police,
+  get wasted() { return wasted; },
+  get health() { return vitals.health; },
+  get stamina() { return vitals.stamina; },
+  get canRun() { return vitals.canRun; },
+  get mag() { return combat.mag; },
+  get reserve() { return combat.reserve; },
+  get reloading() { return combat.reloading; },
+  get weapon() { return { name: combat.weaponName, type: combat.weaponType }; },
+  get hits() { return combat.hits; },
+  get shotsFired() { return combat.shotsFired; },
+  hero, car, police, vitals, combat,
   // Test helpers: set the heat at once, put a patrol car beside the player,
   // or force the bust, without waiting for a real crime and chase.
   debug: {
@@ -259,6 +325,9 @@ window.__solmar = {
       police.placeNear(p.x, p.z);
     },
     forceBust() { police.forceBust(); },
+    damage(n) { vitals.damage(n); },
+    shoot() { combat.shoot(); },
+    reload() { combat.reload(); },
   },
 };
 

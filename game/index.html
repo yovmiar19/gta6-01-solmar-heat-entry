@@ -45,6 +45,30 @@
   #busted-text { font-size: 84px; font-weight: 900; letter-spacing: 0.14em; color: #ff3b2d; text-shadow: 0 0 24px rgba(255, 60, 40, 0.8), 0 4px 18px rgba(0, 0, 0, 0.9); }
   #busted-sub { font-size: 16px; color: #ffd97a; margin-top: 8px; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9); }
 
+  /* WASTED overlay, dead centre. Hidden until Raka's health runs out. */
+  #wasted-overlay { position: fixed; inset: 0; display: none; align-items: center; justify-content: center; flex-direction: column; background: rgba(10, 6, 4, 0.55); z-index: 5; }
+  #wasted-text { font-size: 84px; font-weight: 900; letter-spacing: 0.14em; color: #ff8a5c; text-shadow: 0 0 24px rgba(255, 140, 60, 0.8), 0 4px 18px rgba(0, 0, 0, 0.9); }
+  #wasted-sub { font-size: 16px; color: #ffd97a; margin-top: 8px; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.9); }
+
+  /* Hit marker, dead centre. It flashes when a round lands. */
+  #hitmarker { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); font-size: 30px; font-weight: 900; color: #fff; text-shadow: 0 0 8px rgba(255, 60, 40, 0.9), 0 0 2px #000; opacity: 0; transition: opacity 0.12s; pointer-events: none; }
+
+  /* Survival panel, bottom-right: health, stamina, weapon, bullet count. */
+  #survival { position: absolute; right: 14px; bottom: 14px; width: 220px; }
+  #survival .row { display: flex; align-items: center; gap: 8px; margin-top: 6px; }
+  #survival .row .label { width: 62px; flex: none; }
+  #survival .num { font-size: 13px; font-weight: 800; width: 30px; text-align: right; flex: none; }
+  #survival .bar { flex: 1; margin-top: 0; }
+  #health-bar { height: 100%; background: #7ed957; width: 100%; border-radius: 4px; }
+  #stamina-bar { height: 100%; background: #f2c94c; width: 100%; border-radius: 4px; }
+  #weapon-line { display: flex; align-items: baseline; gap: 6px; margin-top: 8px; }
+  #weapon-name { font-size: 16px; font-weight: 800; letter-spacing: 0.06em; }
+  #weapon-type { font-size: 11px; color: #d8cfc2; letter-spacing: 0.1em; }
+  #ammo-line { display: flex; align-items: baseline; gap: 6px; margin-top: 2px; }
+  #ammo-num { font-size: 22px; font-weight: 900; letter-spacing: 0.04em; }
+  #ammo-num.empty { color: #ff4d3d; }
+  #ammo-label { font-size: 10px; letter-spacing: 0.14em; color: #f2c94c; font-weight: 700; }
+
   /* Action prompt ("Press E to enter the Sunset GT"), above the hint. */
   #car-prompt { position: absolute; bottom: 34px; left: 50%; transform: translateX(-50%); display: none; font-size: 14px; font-weight: 700; color: #ffd97a; background: rgba(20, 14, 8, 0.72); border: 1px solid rgba(242, 201, 76, 0.5); border-radius: 6px; padding: 6px 12px; white-space: nowrap; }
   #car-prompt b { color: #fff; }
@@ -62,7 +86,7 @@
   <div id="title-panel" class="panel">
     <div class="name">SOLMAR <span class="heat">HEAT</span></div>
     <div class="place">SOLMAR BAY · GOLDEN HOUR</div>
-    <div class="step">STEP 3 — ON FOOT + DRIVING + WANTED</div>
+    <div class="step">STEP 4 — ON FOOT + DRIVING + WANTED + COMBAT</div>
   </div>
   <div id="clock-box">
     <div id="clock">17:30</div>
@@ -78,11 +102,22 @@
     <div id="speed-line">Speed <b id="speed-num">0</b> km/h · <span id="speed-what">Raka</span></div>
     <div class="bar"><div id="pace-bar"></div></div>
   </div>
+  <div id="survival" class="panel">
+    <div class="row"><div class="label">HEALTH</div><div class="bar"><div id="health-bar"></div></div><div class="num" id="health-num">100</div></div>
+    <div class="row"><div class="label">STAMINA</div><div class="bar"><div id="stamina-bar"></div></div><div class="num" id="stamina-num">100</div></div>
+    <div id="weapon-line"><div id="weapon-name">Pistol</div><div id="weapon-type">Handgun</div></div>
+    <div id="ammo-line"><div id="ammo-num">12 / 24</div><div id="ammo-label">AMMO</div></div>
+  </div>
+  <div id="hitmarker">✕</div>
   <div id="car-prompt"></div>
-  <div id="hint"><b>WASD</b> move &nbsp;·&nbsp; <b>Shift</b> run &nbsp;·&nbsp; <b>E</b> enter car &nbsp;·&nbsp; <b>drag</b> to look around</div>
+  <div id="hint"><b>WASD</b> move &nbsp;·&nbsp; <b>Shift</b> run &nbsp;·&nbsp; <b>E</b> enter car &nbsp;·&nbsp; <b>click</b> shoot &nbsp;·&nbsp; <b>R</b> reload &nbsp;·&nbsp; <b>drag</b> to look around</div>
   <div id="busted-overlay">
     <div id="busted-text">BUSTED</div>
     <div id="busted-sub">Raka was caught — the heat is off... for now.</div>
+  </div>
+  <div id="wasted-overlay">
+    <div id="wasted-text">WASTED</div>
+    <div id="wasted-sub">Raka went down — patched up and back on the avenue.</div>
   </div>
 </div>
 
