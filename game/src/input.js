@@ -12,6 +12,8 @@ export function createInput(canvas, onOrbit) {
   let actionQueued = false; // E pressed since the last takeAction() call
   let shotQueued = false; // a click (not a drag) since the last takeShot() call
   let reloadQueued = false; // R pressed since the last takeReload() call
+  let weatherQueued = false; // C pressed since the last takeWeather() call
+  let timeQueued = false; // T pressed since the last takeTime() call
   let aiming = false; // right mouse held since the last pointer event
   let dragging = false;
   let clickCandidate = false; // left button down, not yet released: may be a click
@@ -29,6 +31,8 @@ export function createInput(canvas, onOrbit) {
     }
     if (event.code === 'KeyE' && !event.repeat) actionQueued = true;
     if (event.code === 'KeyR' && !event.repeat) reloadQueued = true;
+    if (event.code === 'KeyC' && !event.repeat) weatherQueued = true;
+    if (event.code === 'KeyT' && !event.repeat) timeQueued = true;
     keys.add(event.code);
   }
   function up(event) {
@@ -160,6 +164,18 @@ export function createInput(canvas, onOrbit) {
     takeReload() {
       const pressed = reloadQueued;
       reloadQueued = false;
+      return pressed;
+    },
+    /** True once per C press, then clears: turn the weather (step 8). */
+    takeWeather() {
+      const pressed = weatherQueued;
+      weatherQueued = false;
+      return pressed;
+    },
+    /** True once per T press, then clears: jump the clock two hours (step 8). */
+    takeTime() {
+      const pressed = timeQueued;
+      timeQueued = false;
       return pressed;
     },
     /** True while the right mouse button is held: aim mode. */

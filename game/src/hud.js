@@ -35,6 +35,9 @@ export function createHud() {
   const missionObjectiveEl = document.getElementById('mission-objective');
   const cashNumEl = document.getElementById('cash-num');
   const missionBannerEl = document.getElementById('mission-banner');
+  const clockEl = document.getElementById('clock');
+  const clockSubEl = document.getElementById('clock-sub');
+  let lastClock = '';
   let lastState = '';
   let lastWanted = -1;
   let lastHealth = -1;
@@ -195,6 +198,22 @@ export function createHud() {
       if (cash === lastCash) return;
       lastCash = cash;
       cashNumEl.textContent = `$${cash.toLocaleString('en-US')}`;
+    },
+    /**
+     * Refresh the CLOCK (top-right): the game time ("14:30") and, under it,
+     * the phase of day with a sun/moon mark and the weather ("☀ DAY · CLEAR",
+     * "☾ NIGHT · RAIN"). The line only rewrites when it actually changes.
+     */
+    setClock(hours, phase, weather) {
+      const h = Math.floor(hours) % 24;
+      const m = Math.floor((hours % 1) * 60);
+      const text = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+      const icon = (phase === 'NIGHT' || phase === 'DUSK') ? '☾' : '☀';
+      const key = `${text}|${icon} ${phase} · ${weather}`;
+      if (key === lastClock) return;
+      lastClock = key;
+      clockEl.textContent = text;
+      clockSubEl.textContent = `${icon} ${phase} · ${weather}`;
     },
     /**
      * Flash the mission banner across the top of the screen ("MISSION

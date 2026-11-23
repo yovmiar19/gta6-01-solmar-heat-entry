@@ -39,6 +39,27 @@ function makeFacadeTexture(base, litRatio, rand) {
   return texture;
 }
 
+/** A windows-only glow map for a facade: black everywhere except the lit windows. */
+function makeWindowGlowTexture(litRatio, rand) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128; canvas.height = 256;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, 128, 256);
+  // Same window grid as the facade (4 columns, 8 rows), so the glow lines
+  // up with the windows drawn on the day texture.
+  for (let row = 0; row < 8; row += 1) {
+    for (let col = 0; col < 4; col += 1) {
+      if (rand() < litRatio) {
+        ctx.fillStyle = '#ffd97a';
+        ctx.fillRect(10 + col * 30, 18 + row * 26, 18, 16);
+      }
+    }
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
 /** A vertical sky gradient (blue above, warm gold at the horizon) as a texture. */
 function makeSkyTexture() {
   const canvas = document.createElement('canvas');
@@ -78,7 +99,8 @@ export function createWorld(scene, seed) {
   sun.shadow.camera.far = 220;
   sun.shadow.bias = -0.0004;
   scene.add(sun);
-  scene.add(new THREE.HemisphereLight(0xbcd8ee, 0x8a7a5e, 0.9));
+  const hemi = new THREE.HemisphereLight(0xbcd8ee, 0x8a7a5e, 0.9);
+  scene.add(hemi);
 
   // --- ground --------------------------------------------------------------
   const ground = new THREE.Mesh(
@@ -116,25 +138,36 @@ export function createWorld(scene, seed) {
   }
 
   // --- buildings -----------------------------------------------------------
-  // Facade textures in a few warm colours, reused across the blocks.
+  // Facade textures in a few warm colours, reused across the blocks. Each
+  // facade is a pair: the day map and its windows-only glow map, which the
+  // environment lights up at night so the windows shine warm yellow.
   const facades = [
-    makeFacadeTexture('#e8d9b0', 0.35, rand),
-    makeFacadeTexture('#d9905f', 0.3, rand),
-    makeFacadeTexture('#7fa8a0', 0.3, rand),
-    makeFacadeTexture('#e8b48a', 0.35, rand),
-    makeFacadeTexture('#c9b8d8', 0.25, rand),
+    { map: makeFacadeTexture('#e8d9b0', 0.35, rand), glow: makeWindowGlowTexture(0.6, rand) },
+    { map: makeFacadeTexture('#d9905f', 0.3, rand), glow: makeWindowGlowTexture(0.55, rand) },
+    { map: makeFacadeTexture('#7fa8a0', 0.3, rand), glow: makeWindowGlowTexture(0.6, rand) },
+    { map: makeFacadeTexture('#e8b48a', 0.35, rand), glow: makeWindowGlowTexture(0.55, rand) },
+    { map: makeFacadeTexture('#c9b8d8', 0.25, rand), glow: makeWindowGlowTexture(0.5, rand) },
   ];
   const roofMat = new THREE.MeshStandardMaterial({ color: 0x4a4238, roughness: 1 });
+  const buildings = []; // each building's facade material, for the night glow
 
-  function addBuilding(x, z, width, depth, height, texture) {
+  function addBuilding(x, z, width, depth, height, facade) {
     const block = new THREE.Group();
+    const bodyMat = new THREE.MeshStandardMaterial({
+      map: facade.map,
+      roughness: 0.9,
+      emissiveMap: facade.glow,
+      emissive: 0xffc46b,
+      emissiveIntensity: 0, // the environment raises this after dark
+    });
     const body = new THREE.Mesh(
       new THREE.BoxGeometry(width, height, depth),
-      new THREE.MeshStandardMaterial({ map: texture, roughness: 0.9 }),
+      bodyMat,
     );
     body.position.y = height / 2;
     body.castShadow = true; body.receiveShadow = true;
     block.add(body);
+    buildings.push({ material: bodyMat });
     const roof = new THREE.Mesh(new THREE.BoxGeometry(width + 0.4, 0.5, depth + 0.4), roofMat);
     roof.position.y = height + 0.25;
     roof.castShadow = true;
@@ -170,6 +203,7 @@ export function createWorld(scene, seed) {
   // --- street lamps ---------------------------------------------------------
   const poleMat = new THREE.MeshStandardMaterial({ color: 0x2a2a2e, roughness: 0.6, metalness: 0.4 });
   const lampMat = new THREE.MeshStandardMaterial({ color: 0xffe9b0, emissive: 0xffc46b, emissiveIntensity: 1.6 });
+  const lampPositions = []; // every lamp head, for the night light pools
   function addLamp(x, z) {
     const lamp = new THREE.Group();
     const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.12, 0.16, 5.2, 8), poleMat);
@@ -180,10 +214,35 @@ export function createWorld(scene, seed) {
     lamp.add(head);
     lamp.position.set(x, 0, z);
     scene.add(lamp);
+    lampPositions.push({ x, z });
   }
   for (const z of [-52, -38, -22, -8, 8, 22, 38, 52]) {
     addLamp(-6.2, z); addLamp(6.2, z);
   }
+
+  // --- neon signs -----------------------------------------------------------
+  // Four glowing shop signs on the avenue-facing buildings, one per colour.
+  // They are dim by day and blaze after dark (the environment drives them).
+  const neonSigns = [];
+  const neonColours = [0x35e0ff, 0xff5fa2, 0xff9a3d, 0x8dff5e];
+  const neonPlots = [[-20, -15, 12], [20, -15, 14], [-20, 15, 13], [20, 15, 12]];
+  neonPlots.forEach(([px, pz, w], i) => {
+    const facingEast = px < 0; // the sign hangs on the avenue side of the block
+    const signX = facingEast ? px + w / 2 + 0.08 : px - w / 2 - 0.08;
+    const bright = new THREE.Color(neonColours[i]);
+    const mat = new THREE.MeshBasicMaterial({ color: bright.clone().multiplyScalar(0.22), toneMapped: false });
+    const sign = new THREE.Mesh(new THREE.PlaneGeometry(2.4, 0.8), mat);
+    sign.position.set(signX, 5.5, pz);
+    sign.rotation.y = facingEast ? Math.PI / 2 : -Math.PI / 2;
+    scene.add(sign);
+    const backing = new THREE.Mesh(
+      new THREE.BoxGeometry(0.1, 1.0, 2.6),
+      new THREE.MeshStandardMaterial({ color: 0x1a1a1e, roughness: 0.8 }),
+    );
+    backing.position.set(facingEast ? signX - 0.06 : signX + 0.06, 5.5, pz);
+    scene.add(backing);
+    neonSigns.push({ material: mat, bright });
+  });
 
   // --- palm trees -----------------------------------------------------------
   const trunkMat = new THREE.MeshStandardMaterial({ color: 0x7a5c3e, roughness: 1 });
@@ -227,6 +286,24 @@ export function createWorld(scene, seed) {
   return {
     bounds,
     colliders,
+    /** The golden-hour sun, so the environment can move and dim it. */
+    sun,
+    /** The sky/ground fill light, so the environment can cool it at night. */
+    hemi,
+    /** The road surface, so rain can make it glossy. */
+    asphalt,
+    /** The shared lamp-head material, so the lamps can glow after dark. */
+    lampMat,
+    /** Every lamp head's ground position, for the night light pools. */
+    lampPositions,
+    /** Each building's facade material, for the lit windows at night. */
+    buildings,
+    /** The neon shop signs and their full-bright colours. */
+    neonSigns,
+    /** The building plots, so the environment can hang things on them. */
+    plots,
+    /** The shared cloud material, so weather can grey the clouds. */
+    cloudMat,
     /** Drift the clouds slowly across the sky. */
     update(dt) {
       for (const cloud of clouds) {

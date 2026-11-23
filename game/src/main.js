@@ -25,6 +25,7 @@ import { createInput } from './input.js';
 import { createHud } from './hud.js';
 import { createRadar } from './radar.js';
 import { createMissions } from './missions.js';
+import { createEnvironment } from './environment.js';
 import { stageShot } from './shots.js';
 
 const WALK_SPEED = 3.2; // metres per second
@@ -69,6 +70,7 @@ scene.add(car.group);
 
 const police = createPolice(scene, world);
 const traffic = createTraffic(scene, world, police);
+const env = createEnvironment(scene, world); // step 8: day-night, weather, lights
 
 const chase = createChaseCamera(camera);
 const hud = createHud();
@@ -260,6 +262,20 @@ if (frozen) {
 // --- movement ----------------------------------------------------------------
 function step(dt) {
   world.update(dt);
+  // Step 8: C turns the weather (clear → rain → fog → storm), T jumps the
+  // clock two hours ahead. Both work on foot and behind the wheel. They run
+  // before the sky update, so the HUD clock reads the jumped time at once.
+  if (input.takeWeather()) env.cycleWeather();
+  if (input.takeTime()) env.advanceTime(2);
+  // Step 8: the sky turns (the clock runs, the weather may turn) and the
+  // HUD clock reads it. A staged screenshot frame holds the light still:
+  // frozen frames never advance the clock or turn the weather.
+  env.update(dt, {
+    player: { x: hero.group.position.x, z: hero.group.position.z },
+    driven: driving ? vehicle : null,
+    frozen,
+  });
+  hud.setClock(env.hours, env.phase, env.weather);
   if (frozen) {
     // Hold the staged frame: camera exactly on its spot. The radar still
     // draws (it is part of the frame) and the markers still pulse.
@@ -491,6 +507,14 @@ window.__solmar = {
   },
   get radarPlayer() { return radar.player; },
   get radarTarget() { return radar.target; },
+  /** Step 8: the game clock (hours), the weather and how dark it is. */
+  get envTime() { return env.hours; },
+  get envWeather() { return env.weather; },
+  get envPhase() { return env.phase; },
+  get envNight() { return env.night; },
+  /** Step 8: the lightning flash (1 at a strike, decaying to 0). */
+  get envLightning() { return env.lightning; },
+  env,
   get trafficVehicles() {
     return traffic.vehicles.map((v) => ({
       name: v.name, type: v.type,
@@ -571,6 +595,12 @@ window.__solmar = {
       speed = 0;
       return true;
     },
+    /** Step 8: jump the game clock to an hour at once (0–24). */
+    setTime(h) { env.setTime(h); },
+    /** Step 8: set the weather at once ('CLEAR' | 'RAIN' | 'FOG' | 'STORM'). */
+    setWeather(name) { return env.setWeather(name); },
+    /** Step 8: turn the weather on to the next one. */
+    cycleWeather() { return env.cycleWeather(); },
     /** Put Raka beside the mission start marker, facing it. */
     toMissionStart() {
       if (driving) return false;
