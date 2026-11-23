@@ -30,13 +30,20 @@ export function createHud() {
   const weaponTypeEl = document.getElementById('weapon-type');
   const ammoEl = document.getElementById('ammo-num');
   const hitmarkerEl = document.getElementById('hitmarker');
+  const missionNameEl = document.getElementById('mission-name');
+  const missionObjectiveEl = document.getElementById('mission-objective');
+  const cashNumEl = document.getElementById('cash-num');
+  const missionBannerEl = document.getElementById('mission-banner');
   let lastState = '';
   let lastWanted = -1;
   let lastHealth = -1;
   let lastStamina = -1;
   let lastAmmo = '';
   let lastWeapon = '';
+  let lastMission = '';
+  let lastCash = -1;
   let hitTimer = null;
+  let bannerTimer = null;
 
   function showSpeed(kmh, top) {
     speedEl.textContent = String(kmh);
@@ -159,6 +166,37 @@ export function createHud() {
       hitmarkerEl.style.opacity = '1';
       if (hitTimer) clearTimeout(hitTimer);
       hitTimer = setTimeout(() => { hitmarkerEl.style.opacity = '0'; }, 150);
+    },
+    /**
+     * Show the active mission: its NAME ("Pier Run") and its OBJECTIVE
+     * ("Drive to the pier drop-off at the north end"). With no mission in
+     * progress the panel says so and points Raka at the job marker.
+     */
+    setMission(name, objective) {
+      const key = `${name ?? ''}|${objective ?? ''}`;
+      if (key === lastMission) return;
+      lastMission = key;
+      missionNameEl.textContent = name ?? 'NO MISSION';
+      missionObjectiveEl.textContent = objective ?? 'Walk into the glowing cyan marker to start a job.';
+    },
+    /**
+     * Show the cash total banked from finished missions, with a thousands
+     * separator ("$2,900"), so a glance says how much the jobs paid.
+     */
+    setCash(cash) {
+      if (cash === lastCash) return;
+      lastCash = cash;
+      cashNumEl.textContent = `$${cash.toLocaleString('en-US')}`;
+    },
+    /**
+     * Flash the mission banner across the top of the screen ("MISSION
+     * COMPLETE — Pier Run +$800") for three seconds, then hide it.
+     */
+    showMissionBanner(text) {
+      missionBannerEl.textContent = text;
+      missionBannerEl.style.display = 'block';
+      if (bannerTimer) clearTimeout(bannerTimer);
+      bannerTimer = setTimeout(() => { missionBannerEl.style.display = 'none'; }, 3000);
     },
   };
 }

@@ -1,9 +1,11 @@
 // SOLMAR HEAT — the entry program for make.fun's "Make GTA 6" bounty (gta6-01).
 //
-// Step 4: the game now has combat (Raka's Pistol) and the survival HUD
-// (health, stamina, weapon, bullet count) alongside the city, the car and
-// the wanted system; this program still just hands the game in, unchanged
-// in what it copies: game/ and screenshots/ into the output directory.
+// Step 6: the game now has a minimap radar and four missions (First Wheels,
+// Pier Run, Target Practice, Lose the Heat — $2,900 in all) with a cash
+// total on the HUD, alongside the city, the car, the wanted system, combat,
+// the survival HUD, the pedestrians and the stealable rides; this program
+// still just hands the game in, unchanged in what it copies: game/ and
+// screenshots/ into the output directory.
 // This is the program the grader runs (Node 22, standard library only). It takes the
 // game in this repository — the static files under game/ and the screenshots under
 // screenshots/ — and hands them in: it copies both folders into the output directory

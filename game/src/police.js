@@ -328,6 +328,22 @@ export function createPolice(scene, world) {
     get wanted() { return wanted; },
     /** How many patrol cars are on the road right now. */
     get count() { return cars.length; },
+    /** The patrol cars' spots, for the radar (an empty list while none are out). */
+    get patrolPositions() {
+      return cars.map((c) => ({ x: c.group.position.x, z: c.group.position.z }));
+    },
+    /** The helicopter's spot, or null while it is not out (for the radar). */
+    get heliPos() {
+      return heli ? { x: heli.group.position.x, z: heli.group.position.z } : null;
+    },
+    /** Distance to the nearest patrol car, or Infinity while none are out. */
+    nearestCarDistance(x, z) {
+      let best = Infinity;
+      for (const c of cars) {
+        best = Math.min(best, Math.hypot(c.group.position.x - x, c.group.position.z - z));
+      }
+      return best;
+    },
     /** True once a patrol car has pinned the player: the bust has landed. */
     get busted() { return busted; },
     /**

@@ -118,6 +118,7 @@ export function createCombat(scene, hero, police, onHit, onShot) {
   let sparkTimer = 0;
   let aimTimer = 0; // seconds the aim pose still holds after a shot
   let hits = 0; // rounds that landed on the dummy, a patrol car or a pedestrian
+  let dummyHits = 0; // rounds that landed on the practice dummy alone
   let shotsFired = 0;
   let shotX = 0; // where the last round landed (ground point, for scares)
   let shotZ = 0;
@@ -179,6 +180,8 @@ export function createCombat(scene, hero, police, onHit, onShot) {
     get reloading() { return reloading; },
     /** Rounds that landed on the dummy, a patrol car or a pedestrian. */
     get hits() { return hits; },
+    /** Rounds that landed on the practice dummy alone (a mission counts them). */
+    get dummyHits() { return dummyHits; },
     /** Rounds fired so far. */
     get shotsFired() { return shotsFired; },
     /** Where the last round landed, x (a scare for pedestrians nearby). */
@@ -229,6 +232,7 @@ export function createCombat(scene, hero, police, onHit, onShot) {
         }
         if (kind === 'dummy' || kind === 'police' || kind === 'npc') {
           hits += 1;
+          if (kind === 'dummy') dummyHits += 1;
           if (kind === 'police') police.noteShooting();
           if (kind === 'npc') {
             police.noteAssault();

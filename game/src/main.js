@@ -21,6 +21,8 @@ import { createVitals } from './vitals.js';
 import { createChaseCamera } from './camera.js';
 import { createInput } from './input.js';
 import { createHud } from './hud.js';
+import { createRadar } from './radar.js';
+import { createMissions } from './missions.js';
 import { stageShot } from './shots.js';
 
 const WALK_SPEED = 3.2; // metres per second
@@ -66,6 +68,8 @@ const traffic = createTraffic(scene, world, police);
 
 const chase = createChaseCamera(camera);
 const hud = createHud();
+const radar = createRadar();
+const missions = createMissions(scene);
 const vitals = createVitals();
 const combat = createCombat(scene, hero, police, () => hud.showHit(), (x, z) => traffic.noteShot(x, z));
 const input = createInput(canvas, (dx, dy) => chase.orbit(dx, dy));
@@ -115,6 +119,7 @@ function respawn() {
   lastVehicleHits = car.hits;
   police.reset();
   traffic.reset();
+  missions.reset();
   vitals.reset();
   combat.reset();
   chase.setDistance(FOOT_CAM_DISTANCE);
@@ -122,6 +127,8 @@ function respawn() {
   hud.showBusted(false);
   hud.showWasted(false);
   hud.setPrompt(null);
+  hud.setMission(null, null);
+  hud.setCash(missions.cash);
   busted = false;
   bustedTimer = 0;
   wasted = false;
@@ -177,6 +184,22 @@ function exitVehicle() {
   hud.setPrompt(null);
 }
 
+/** The radar's inputs: Raka, the heat, the street and the mission target. */
+function radarState() {
+  return {
+    x: hero.group.position.x,
+    z: hero.group.position.z,
+    yaw: hero.yaw,
+    police: police.patrolPositions,
+    heli: police.heliPos,
+    vehicles: traffic.vehicles,
+    npcs: traffic.npcs,
+    sunset: { x: car.group.position.x, z: car.group.position.z },
+    target: missions.target,
+    time: performance.now() / 1000,
+  };
+}
+
 // A screenshot scene freezes the pose and holds the frame; play mode moves.
 const shotFocus = shotName ? stageShot(shotName, hero, chase, car, police, traffic) : null;
 const frozen = shotFocus !== null;
@@ -195,6 +218,15 @@ if (frozen) {
     combat.stageShoot(); // tracer held on the frame, magazine 11 / 24
     hud.updateFoot(0, false, false);
     hud.setPrompt(null);
+  } else if (shotName === 'mission') {
+    // The Pier Run is in progress: its gold marker stands at the north
+    // end of the avenue, the radar shows the target diamond, and the
+    // mission panel names the job. Raka stands on foot below the marker.
+    missions.stageMissionShot();
+    hud.updateFoot(0, false, false);
+    hud.setMission('Pier Run', 'Drive to the pier drop-off at the north end');
+    hud.setCash(missions.cash);
+    hud.setPrompt(null);
   } else {
     hud.updateFoot(0, false, false);
     hud.setPrompt(null);
@@ -208,8 +240,11 @@ if (frozen) {
 function step(dt) {
   world.update(dt);
   if (frozen) {
-    // Hold the staged frame: camera exactly on its spot.
+    // Hold the staged frame: camera exactly on its spot. The radar still
+    // draws (it is part of the frame) and the markers still pulse.
     chase.update(dt, shotFocus, true);
+    radar.update(radarState());
+    missions.pulse(dt);
     return;
   }
 
@@ -232,7 +267,13 @@ function step(dt) {
   if (driving) {
     // --- behind the wheel ---------------------------------------------------
     vehicle.update(dt, input, world);
-    chase.yawToward(vehicle.yaw, dt); // the camera eases in behind the ride
+    // The camera eases in BEHIND the ride: its yaw is the car's heading
+    // plus half a turn, so it sits on the side opposite to where the car
+    // faces and looks the way the car is going. (The car's yaw is the
+    // direction it faces; the camera's yaw is the direction from the car
+    // to the camera — the same number would park the camera in FRONT of
+    // the car, looking back at it.)
+    chase.yawToward(vehicle.yaw + Math.PI, dt);
     chase.update(dt, vehicle.group.position, false);
     hud.updateDriving(vehicle.speed, vehicleName);
     hud.setPrompt(Math.abs(vehicle.speed) < 1 ? 'Press E to get out' : null);
@@ -314,6 +355,29 @@ function step(dt) {
   hud.setWanted(police.wanted);
   if (police.busted) startBusted();
   else if (vitals.wasted) startWasted();
+
+  // --- the jobs: start one at the marker, finish one at its target --------
+  // A job pays cash and starts the next straight away; the banner calls
+  // out each completion and the panel names the job in progress.
+  missions.update(dt, {
+    x: player.x,
+    z: player.z,
+    driving,
+    vehicle: driving ? vehicle : null,
+    wanted: police.wanted,
+    dummyHits: combat.dummyHits,
+    vehicles: traffic.vehicles,
+  });
+  const banner = missions.takeBanner();
+  if (banner) hud.showMissionBanner(banner);
+  hud.setMission(
+    missions.active ? missions.active.name : null,
+    missions.active ? missions.active.objective : null,
+  );
+  hud.setCash(missions.cash);
+
+  // --- the radar: Raka, the heat, the street and the mission target --------
+  radar.update(radarState());
 }
 
 // --- the loop -----------------------------------------------------------------
@@ -353,6 +417,18 @@ window.__solmar = {
   get vehicleName() { return driving ? vehicleName : null; },
   get npcCount() { return traffic.npcCount; },
   get fleeingCount() { return traffic.fleeingCount; },
+  get cash() { return missions.cash; },
+  get mission() {
+    return {
+      active: missions.active ? missions.active.name : null,
+      objective: missions.active ? missions.active.objective : null,
+      cash: missions.cash,
+      completed: missions.completedCount,
+      target: missions.target,
+    };
+  },
+  get radarPlayer() { return radar.player; },
+  get radarTarget() { return radar.target; },
   get trafficVehicles() {
     return traffic.vehicles.map((v) => ({
       name: v.name, type: v.type,
@@ -360,7 +436,7 @@ window.__solmar = {
       speed: v.speed, stolen: v.stolen,
     }));
   },
-  hero, car, police, vitals, combat, traffic,
+  hero, car, police, vitals, combat, traffic, missions, radar, chase,
   // Test helpers: set the heat at once, put a patrol car beside the player,
   // or force the bust, without waiting for a real crime and chase.
   debug: {
@@ -422,6 +498,41 @@ window.__solmar = {
         best.group.position.z - hero.group.position.z,
       ));
       hero.group.rotation.y = hero.yaw;
+      return true;
+    },
+    /** Put Raka on a spot on foot, facing a direction (staging). */
+    toPos(x, z, yaw = Math.PI) {
+      if (driving) return false;
+      hero.group.position.set(x, 0, z);
+      hero.face(yaw);
+      hero.group.rotation.y = yaw;
+      speed = 0;
+      return true;
+    },
+    /** Put Raka beside the mission start marker, facing it. */
+    toMissionStart() {
+      if (driving) return false;
+      const s = missions.start;
+      hero.group.position.set(s.x, 0, s.z + 2.5);
+      hero.face(Math.PI);
+      hero.group.rotation.y = Math.PI;
+      speed = 0;
+      return true;
+    },
+    /** Put Raka (or the ride he is driving) beside the active target. */
+    toTarget() {
+      const t = missions.target;
+      if (!t) return false;
+      if (driving) {
+        vehicle.group.position.set(t.x, 0, t.z + 2);
+        vehicle.setHeading(Math.PI);
+        vehicle.halt();
+      } else {
+        hero.group.position.set(t.x, 0, t.z + 2);
+        hero.face(Math.PI);
+        hero.group.rotation.y = Math.PI;
+        speed = 0;
+      }
       return true;
     },
     /** Put a pedestrian right ahead of the ride Raka is driving. */

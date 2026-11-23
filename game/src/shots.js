@@ -34,6 +34,10 @@ const SHOTS = {
   // on the sidewalks, the motorbike on the right edge, the truck and the
   // bus further up the avenue and the red sedan cruising toward him.
   street: { hero: [0, 14], face: Math.PI, phase: 0.9, lean: 0.03, cam: [0, 0.32, 6], car: [2.2, 4.5], street: true },
+  // The mission: Raka on foot below the Pier Run's gold marker, the target
+  // column standing at the north end of the avenue, the radar up top-right
+  // showing the target diamond, and the street alive around him.
+  mission: { hero: [0, 20], face: Math.PI, phase: 0.9, lean: 0.03, cam: [0, 0.32, 6], car: [2.2, 4.5], street: true },
 };
 
 /**

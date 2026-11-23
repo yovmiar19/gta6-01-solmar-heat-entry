@@ -28,6 +28,21 @@
   #clock { font-size: 22px; font-weight: 800; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.7); }
   #clock-sub { font-size: 11px; letter-spacing: 0.1em; color: #ffd97a; margin-top: 2px; text-shadow: 0 2px 6px rgba(0, 0, 0, 0.7); }
 
+  /* Radar (minimap), top-right, under the clock. */
+  #radar-panel { position: absolute; top: 64px; right: 14px; padding: 8px; }
+  #radar-panel .label { margin-bottom: 4px; }
+  #radar { width: 150px; height: 150px; display: block; border-radius: 4px; }
+
+  /* Mission panel, top-left, under the title. */
+  #mission-panel { position: absolute; top: 118px; left: 14px; width: 232px; }
+  #mission-name { font-size: 15px; font-weight: 800; letter-spacing: 0.06em; margin-top: 2px; }
+  #mission-objective { font-size: 12px; color: #d8cfc2; margin-top: 3px; line-height: 1.35; }
+  #cash-line { font-size: 12px; margin-top: 6px; color: #d8cfc2; }
+  #cash-line b { color: #7ed957; font-size: 15px; }
+
+  /* Mission banner, top-centre under the wanted box. Hidden until a job pays. */
+  #mission-banner { position: absolute; top: 66px; left: 50%; transform: translateX(-50%); display: none; font-size: 15px; font-weight: 800; color: #7ed957; background: rgba(20, 14, 8, 0.78); border: 1px solid rgba(126, 217, 87, 0.55); border-radius: 6px; padding: 7px 14px; white-space: nowrap; text-shadow: 0 1px 4px rgba(0, 0, 0, 0.85); }
+
   /* On-foot / driving state, bottom-left. */
   #onfoot { position: absolute; left: 14px; bottom: 14px; width: 210px; }
   #move-state { font-size: 16px; font-weight: 800; letter-spacing: 0.08em; margin-top: 2px; }
@@ -86,12 +101,23 @@
   <div id="title-panel" class="panel">
     <div class="name">SOLMAR <span class="heat">HEAT</span></div>
     <div class="place">SOLMAR BAY · GOLDEN HOUR</div>
-    <div class="step">STEP 5 — NPC + KENDARAAN UMUM (SEDAN, MOTOR, TRUK, BUS)</div>
+    <div class="step">STEP 6 — RADAR + MISI (MINIMAP, 4 MISSIONS, $2,900)</div>
   </div>
   <div id="clock-box">
     <div id="clock">17:30</div>
     <div id="clock-sub">GOLDEN HOUR</div>
   </div>
+  <div id="radar-panel" class="panel">
+    <div class="label">RADAR</div>
+    <canvas id="radar" width="300" height="300"></canvas>
+  </div>
+  <div id="mission-panel" class="panel">
+    <div class="label">MISSION</div>
+    <div id="mission-name">NO MISSION</div>
+    <div id="mission-objective">Walk into the glowing cyan marker to start a job.</div>
+    <div id="cash-line">CASH <b id="cash-num">$0</b></div>
+  </div>
+  <div id="mission-banner"></div>
   <div id="wanted-box" class="panel">
     <div class="label">WANTED</div>
     <div id="wanted-stars">☆☆☆☆☆</div>
@@ -110,7 +136,7 @@
   </div>
   <div id="hitmarker">✕</div>
   <div id="car-prompt"></div>
-  <div id="hint"><b>WASD</b> move &nbsp;·&nbsp; <b>Shift</b> run &nbsp;·&nbsp; <b>E</b> enter car &nbsp;·&nbsp; <b>click</b> shoot &nbsp;·&nbsp; <b>R</b> reload &nbsp;·&nbsp; <b>drag</b> to look around</div>
+  <div id="hint"><b>WASD</b> move &nbsp;·&nbsp; <b>Shift</b> run &nbsp;·&nbsp; <b>E</b> enter car &nbsp;·&nbsp; <b>click</b> shoot &nbsp;·&nbsp; <b>R</b> reload &nbsp;·&nbsp; <b>drag</b> to look around &nbsp;·&nbsp; <b>glowing marker</b> starts a mission</div>
   <div id="busted-overlay">
     <div id="busted-text">BUSTED</div>
     <div id="busted-sub">Raka was caught — the heat is off... for now.</div>
