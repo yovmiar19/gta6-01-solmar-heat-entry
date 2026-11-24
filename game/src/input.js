@@ -17,6 +17,11 @@ export function createInput(canvas, onOrbit) {
   let jumpQueued = false; // Space pressed since the last takeJump() call (step 10)
   let slot1Queued = false; // 1 pressed since the last takeSlot1() call (step 10)
   let slot2Queued = false; // 2 pressed since the last takeSlot2() call (step 10)
+  let slot3Queued = false; // 3 pressed since the last takeSlot3() call (step 14)
+  let slot4Queued = false; // 4 pressed since the last takeSlot4() call (step 14)
+  let slot5Queued = false; // 5 pressed since the last takeSlot5() call (step 14)
+  let wheelDelta = 0; // mouse wheel steps since the last takeWheel() call (step 14)
+  let mouseHeld = false; // left button down (full-auto guns fire while it is held, step 14)
   let skipQueued = false; // Esc pressed since the last takeSkip() call (step 11)
   let logQueued = false; // L pressed since the last takeLog() call (step 11)
   let pauseQueued = false; // P pressed since the last takePause() call (step 12)
@@ -42,6 +47,9 @@ export function createInput(canvas, onOrbit) {
     if (event.code === 'Space' && !event.repeat) jumpQueued = true;
     if (event.code === 'Digit1' && !event.repeat) slot1Queued = true;
     if (event.code === 'Digit2' && !event.repeat) slot2Queued = true;
+    if (event.code === 'Digit3' && !event.repeat) slot3Queued = true;
+    if (event.code === 'Digit4' && !event.repeat) slot4Queued = true;
+    if (event.code === 'Digit5' && !event.repeat) slot5Queued = true;
     if (event.code === 'Escape' && !event.repeat) skipQueued = true;
     if (event.code === 'KeyL' && !event.repeat) logQueued = true;
     if (event.code === 'KeyP' && !event.repeat) pauseQueued = true;
@@ -55,6 +63,7 @@ export function createInput(canvas, onOrbit) {
     dragging = false;
     aiming = false;
     clickCandidate = false;
+    mouseHeld = false;
   }
 
   function pointerDown(event) {
@@ -111,6 +120,7 @@ export function createInput(canvas, onOrbit) {
   // above; these two only arm and settle a click candidate.
   function mouseDown(event) {
     if (event.button !== 0) return;
+    mouseHeld = true;
     lastX = event.clientX;
     lastY = event.clientY;
     downX = event.clientX;
@@ -121,6 +131,7 @@ export function createInput(canvas, onOrbit) {
   }
   function mouseUp(event) {
     if (event.button !== 0) return;
+    mouseHeld = false;
     // A press that barely moved the pointer is a click: queue a shot.
     // A real drag moved further and orbits only. The time window is
     // generous on purpose: on a slow frame the up handler can land well
@@ -139,6 +150,14 @@ export function createInput(canvas, onOrbit) {
   canvas.addEventListener('pointercancel', pointerCancel);
   canvas.addEventListener('mousedown', mouseDown);
   canvas.addEventListener('mouseup', mouseUp);
+  // Step 14: the wheel cycles the weapons Raka owns (down = next, up =
+  // previous). The page never scrolls under the game, so the wheel is
+  // free to mean "next gun".
+  function wheel(event) {
+    event.preventDefault();
+    wheelDelta += event.deltaY > 0 ? 1 : -1;
+  }
+  canvas.addEventListener('wheel', wheel, { passive: false });
   // A right click anywhere in the game is aim, never the browser's menu
   // (Inspect and the rest): the canvas, every HUD overlay above it, and
   // the document itself all swallow the context menu. The page is the
@@ -208,6 +227,33 @@ export function createInput(canvas, onOrbit) {
       slot2Queued = false;
       return pressed;
     },
+    /** True once per 3 press, then clears: select the SMG (step 14). */
+    takeSlot3() {
+      const pressed = slot3Queued;
+      slot3Queued = false;
+      return pressed;
+    },
+    /** True once per 4 press, then clears: select the Shotgun (step 14). */
+    takeSlot4() {
+      const pressed = slot4Queued;
+      slot4Queued = false;
+      return pressed;
+    },
+    /** True once per 5 press, then clears: select the Assault Rifle (step 14). */
+    takeSlot5() {
+      const pressed = slot5Queued;
+      slot5Queued = false;
+      return pressed;
+    },
+    /**
+     * Wheel steps since the last call, then clears: +1 per notch down,
+     * -1 per notch up — the game loop cycles the owned weapons by it.
+     */
+    takeWheel() {
+      const steps = wheelDelta;
+      wheelDelta = 0;
+      return steps;
+    },
     /** True once per Esc press, then clears: skip the cutscene (step 11). */
     takeSkip() {
       const pressed = skipQueued;
@@ -240,6 +286,10 @@ export function createInput(canvas, onOrbit) {
       jumpQueued = false;
       slot1Queued = false;
       slot2Queued = false;
+      slot3Queued = false;
+      slot4Queued = false;
+      slot5Queued = false;
+      wheelDelta = 0;
       skipQueued = false;
       logQueued = false;
       pauseQueued = false;
@@ -247,6 +297,10 @@ export function createInput(canvas, onOrbit) {
     /** True while the right mouse button is held: aim mode. */
     get aiming() {
       return aiming;
+    },
+    /** True while the left mouse button is held: full-auto guns fire while it is held. */
+    get mouseHeld() {
+      return mouseHeld;
     },
     /** Forward amount: +1 for W / Up, -1 for S / Down. */
     get forward() {

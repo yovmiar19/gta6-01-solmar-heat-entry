@@ -48,11 +48,13 @@ export function createHud() {
   const jobObjectiveEl = document.getElementById('job-objective');
   const bustedSubEl = document.getElementById('busted-sub');
   const hintEl = document.getElementById('hint');
+  const idolLineEl = document.getElementById('idol-line');
   const defaultHint = hintEl ? hintEl.innerHTML : '';
   let lastStoryBeat = '';
   let lastRank = '';
   let lastDistrict = '';
   let lastJob = '';
+  let lastIdols = '';
   let lastDrown = -1;
   let lastClock = '';
   let lastState = '';
@@ -334,6 +336,18 @@ export function createHud() {
       lastJob = key;
       jobNameEl.textContent = name ?? 'NO SIDE JOB';
       jobObjectiveEl.textContent = objective ?? 'Open the phone (T) to take a side job.';
+    },
+    /**
+     * Show the Sun Idol count and the best stunt-jump score
+     * ("☀ SUN IDOLS 7 / 30 · BEST JUMP 210", step 14) under the title.
+     * With no jump yet the best reads as a dash.
+     */
+    setIdols(count, total, bestScore) {
+      if (!idolLineEl) return;
+      const key = `${count}|${total}|${bestScore}`;
+      if (key === lastIdols) return;
+      lastIdols = key;
+      idolLineEl.textContent = `☀ SUN IDOLS ${count} / ${total} · BEST JUMP ${bestScore > 0 ? bestScore : '—'}`;
     },
     /**
      * Swap the bottom hint line for a moment ("Space: advance the

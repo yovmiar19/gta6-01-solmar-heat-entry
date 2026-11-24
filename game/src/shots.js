@@ -30,6 +30,12 @@ const SHOTS = {
   // dummy, the camera close behind his right shoulder so he reads large and
   // the dummy sits ahead of him in the frame.
   shoot: { hero: [0, 10], face: Math.PI, phase: 0, lean: 0, cam: [0.35, 0.24, 4.8], car: [2.2, 4.5], aim: true },
+  // Step 14: the same frame with each new gun — the SMG, the shotgun and
+  // the assault rifle — so each one reads on the survival panel with its
+  // own ammo count.
+  smg: { hero: [0, 10], face: Math.PI, phase: 0, lean: 0, cam: [0.35, 0.24, 4.8], car: [2.2, 4.5], aim: true },
+  shotgun: { hero: [0, 10], face: Math.PI, phase: 0, lean: 0, cam: [0.35, 0.24, 4.8], car: [2.2, 4.5], aim: true },
+  ar: { hero: [0, 10], face: Math.PI, phase: 0, lean: 0, cam: [0.35, 0.24, 4.8], car: [2.2, 4.5], aim: true },
   // Street life: Raka walking north up the avenue, pedestrians mid-stride
   // on the sidewalks, the motorbike on the right edge, the truck and the
   // bus further up the avenue and the red sedan cruising toward him.

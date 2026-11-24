@@ -41,6 +41,8 @@ import { createDistricts } from './districts.js';
 import { createRank, RP_PER_MISSION, RP_PER_JOB } from './rank.js';
 import { createJobs } from './jobs.js';
 import { createPhone } from './phone.js';
+import { createCollectibles } from './collectibles.js';
+import { createJumps } from './jumps.js';
 import { listSaves, readSave, writeSave, clearSaves, latestSave } from './save.js';
 import { stageShot } from './shots.js';
 
@@ -105,8 +107,85 @@ const radar = createRadar();
 const missions = createMissions(scene);
 const rank = createRank(); // step 13: RANK 1 starts at 0 / 300 RP
 const jobs = createJobs(scene); // step 13: seven paid side jobs
+// Step 14: the Sun Idols — 30 gold idols across the seven districts.
+// A pickup pays $25, warms up its home district by 2, chimes and
+// autosaves; every ten unlocks a visible reward (gold car paint at 10,
+// a gold jacket at 20, a gold phone and $1,000 at 30). A restore
+// re-applies the look without paying the cash twice.
+const collectibles = createCollectibles(scene, {
+  onPickup: (info) => {
+    missions.earn(info.cash);
+    districts.rewardJob(info.districtId, info.standing);
+    hud.setCash(missions.cash);
+    sound.chime();
+    writeSave('auto', collectSaveData());
+  },
+  onReward: (tier, meta) => {
+    if (tier === 10) {
+      // The Sunset GT goes gold: every sunset-orange panel repaints.
+      car.group.traverse((o) => {
+        if (o.material && o.material.color && o.material.color.getHex() === 0xe8641e) {
+          o.material.color.setHex(0xf2c94c);
+        }
+      });
+      if (!meta.restored) hud.showMissionBanner('SUN IDOL REWARD — 10 / 30: the Sunset GT is GOLD now!');
+    } else if (tier === 20) {
+      // Raka's teal jacket goes gold: the Sun Idol outfit.
+      hero.group.traverse((o) => {
+        if (o.material && o.material.color && o.material.color.getHex() === 0x3a8ab0) {
+          o.material.color.setHex(0xd4af37);
+        }
+      });
+      if (!meta.restored) {
+        missions.earn(500);
+        hud.setCash(missions.cash);
+        hud.showMissionBanner('SUN IDOL REWARD — 20 / 30: gold jacket + $500!');
+      }
+    } else if (tier === 30) {
+      // The phone goes gold: a Sun Idol wallpaper for the SOLMAR TEL.
+      const phoneEl = document.getElementById('phone');
+      if (phoneEl) {
+        phoneEl.style.border = '2px solid #f2c94c';
+        phoneEl.style.background = 'linear-gradient(160deg, rgba(80, 58, 10, 0.97), rgba(16, 11, 7, 0.97))';
+      }
+      if (!meta.restored) {
+        missions.earn(1000);
+        hud.setCash(missions.cash);
+        hud.showMissionBanner('SUN IDOL REWARD — 30 / 30: ALL IDOLS! Gold phone + $1,000!');
+      }
+    }
+    if (!meta.restored) {
+      sound.chime();
+      writeSave('auto', collectSaveData());
+    }
+  },
+});
+// Step 14: the stunt jumps — ten ramps around the map. A clean landing
+// pays cash scaled by air time and flips, chained landings multiply it;
+// a rough landing pays half the score and no cash, a wall clip crashes.
+const jumps = createJumps(scene, {
+  onEvent: (ev) => {
+    if (ev.type === 'clean') {
+      missions.earn(ev.cash);
+      phone.recordLedger(`Stunt jump: ${ev.name}`, ev.cash);
+      hud.setCash(missions.cash);
+      const chainText = ev.chain > 1 ? ` · CHAIN x${ev.chain}` : '';
+      hud.showMissionBanner(
+        `CLEAN LANDING — ${ev.name} +$${ev.cash} · ${ev.airTime.toFixed(1)}s air`
+        + (ev.flips ? ` · ${ev.flips} flip${ev.flips > 1 ? 's' : ''}` : '')
+        + chainText,
+      );
+      sound.chime();
+      writeSave('auto', collectSaveData());
+    } else if (ev.type === 'rough') {
+      hud.showMissionBanner(`ROUGH LANDING — ${ev.name} · ${ev.score} pts, no cash`);
+    } else if (ev.type === 'crash') {
+      hud.showMissionBanner(`CRASHED — ${ev.name} · clipped a wall mid-air`);
+    }
+  },
+});
 const vitals = createVitals();
-const combat = createCombat(scene, hero, police, traffic, () => hud.showHit(), (x, z) => traffic.noteShot(x, z), (x, z) => districts.noteCrimeAt(x, z));
+const combat = createCombat(scene, hero, police, traffic, () => hud.showHit(), (x, z) => traffic.noteShot(x, z), (x, z) => districts.noteCrimeAt(x, z), (name) => hud.showMissionBanner(`PICKED UP — ${name}!`), () => jobs.completedCount);
 const movement = createMovement(); // step 10: jump, vault, climb
 const input = createInput(canvas, (dx, dy) => chase.orbit(dx, dy));
 const story = createStory(hud, input); // step 11: cutscene dialogue
@@ -411,6 +490,8 @@ function collectSaveData() {
     stamina: vitals.stamina,
     wanted: police.wanted,
     weaponSlot: combat.slot,
+    // Step 14: the guns Raka owns and their ammo come back with the rest.
+    weapons: combat.saveState(),
     playSeconds,
     // Step 13: rank, district standings, side jobs and the bank ledger.
     rankRp: rank.rp,
@@ -418,6 +499,9 @@ function collectSaveData() {
     jobsCompleted: jobs.completedCount,
     activeJob: jobs.active ? { id: jobs.active.id, stage: jobs.stageIndex } : null,
     ledger: phone.ledger,
+    // Step 14: the Sun Idols found and the stunt-jump best scores.
+    idols: collectibles.snapshot(),
+    jumps: jumps.snapshot(),
   };
 }
 
@@ -436,6 +520,10 @@ function applySave(data) {
   districts.restore(data.standings ?? null);
   jobs.restore(data.activeJob ?? null, data.jobsCompleted ?? 0);
   phone.restoreLedger(data.ledger ?? []);
+  // Step 14: the idols found and the jump bests come back too — a
+  // restored reward re-applies its look, never its cash.
+  collectibles.restore(data.idols ?? null);
+  jumps.restore(data.jumps ?? null);
   const hx = data.hero?.x ?? 0;
   const hz = data.hero?.z ?? 10;
   const hyaw = data.hero?.yaw ?? Math.PI;
@@ -450,7 +538,10 @@ function applySave(data) {
   vitals.setHealth(data.health ?? 100);
   vitals.setStamina(data.stamina ?? 100);
   police.setWanted(Math.max(0, Math.min(5, data.wanted ?? 0)));
-  combat.selectSlot(data.weaponSlot === 1 ? 1 : 2);
+  // Step 14: a save that knows its guns restores them; an old save keeps
+  // the pistol-or-fists slot it recorded.
+  if (data.weapons) combat.restoreState(data.weapons);
+  else combat.selectSlot(data.weaponSlot === 1 ? 1 : 2);
   playSeconds = data.playSeconds ?? 0;
   introStarted = true;
   hud.setCash(missions.cash);
@@ -535,8 +626,12 @@ if (frozen) {
     hud.updateDriving(11); // about 40 km/h, fleeing the patrol cars
     hud.setWanted(3);
     hud.setPrompt(null);
-  } else if (shotName === 'shoot') {
-    combat.stageShoot(); // tracer held on the frame, magazine 11 / 24
+  } else if (shotName === 'shoot' || shotName === 'smg' || shotName === 'shotgun' || shotName === 'ar') {
+    // Step 14: the weapon shots stage the named gun — the SMG, the
+    // shotgun or the rifle — aiming at the dummy with one pull already
+    // down the range, the survival panel showing the gun and its ammo.
+    if (shotName !== 'shoot') combat.give(shotName);
+    combat.stageShoot(); // tracer held on the frame, magazine one pull down
     hud.updateFoot(0, false, false);
     hud.setPrompt(null);
   } else if (shotName === 'mission') {
@@ -919,20 +1014,30 @@ function step(dt) {
     chase.setTargetFov(aiming ? FOV_AIM : FOV_NORMAL);
     hud.setAiming(aiming);
 
-    // --- weapons: 1 is the fists, 2 is the pistol ---------------------------
-    // A click uses whichever is selected: a punch up close, a round at
-    // range. R reloads the pistol (the fists never reload).
+    // --- weapons: 1 is the fists, 2 is the pistol, 3 the SMG, 4 the
+    // shotgun, 5 the assault rifle; the wheel cycles the ones he owns.
+    // A click uses whichever is selected: a punch up close, a pull at
+    // range. The SMG and the rifle are full-auto: they keep firing while
+    // the trigger stays down. R reloads the selected gun (the fists never
+    // reload). Letting go of the trigger bleeds the spread back off.
     if (input.takeSlot1()) combat.selectSlot(1);
     if (input.takeSlot2()) combat.selectSlot(2);
+    if (input.takeSlot3()) combat.selectSlot(3);
+    if (input.takeSlot4()) combat.selectSlot(4);
+    if (input.takeSlot5()) combat.selectSlot(5);
+    const wheelSteps = input.takeWheel();
+    if (wheelSteps !== 0) combat.cycleSlot(wheelSteps > 0 ? 1 : -1);
     if (!swimming && input.takeShot()) {
       if (combat.slot === 1) {
         combat.punch();
         sound.punch();
-      } else {
-        combat.shoot(aiming);
+      } else if (combat.shoot(aiming)) {
         sound.shot();
       }
+    } else if (!swimming && combat.auto && input.mouseHeld) {
+      if (combat.shoot(aiming)) sound.shot();
     }
+    if (!input.mouseHeld) combat.releaseTrigger();
     if (!swimming && input.takeReload()) combat.reload();
 
     // --- a ride: near one, E gets in -----------------------------------------
@@ -1069,17 +1174,33 @@ function step(dt) {
     hud.setCash(missions.cash);
   }
 
+  // --- step 14: the Sun Idols and the stunt jumps --------------------------
+  // An idol is picked up by the chest: on foot that is a metre above
+  // his feet (so a jump reaches a high one), behind the wheel a metre
+  // above the ride. The jumps run off the ride Raka drives — on foot
+  // they only tick their cooldowns and fade the landing dust.
+  collectibles.update(dt, {
+    x: player.x,
+    z: player.z,
+    chestY: (driving ? vehicle.group.position.y : hero.group.position.y) + 1.0,
+  });
+  jumps.update(dt, { driving, vehicle: driving ? vehicle : null, chase });
+
   // --- step 13: the standing readouts — district, rank, side job ----------
   // The HUD refreshes these every frame (its setters cache, so a steady
   // value costs nothing); the district follows Raka as he crosses the map.
   const here = districts.at(player.x, player.z);
   hud.setDistrict(`${here.name} · ${districts.label(here.id)} ${districts.standing(here.id)}`);
+  hud.setIdols(collectibles.count, collectibles.total, jumps.bestScore);
   const prog = rank.progress;
   hud.setRank(rank.rank, rank.rp, rank.nextThreshold, prog.earned, prog.needed);
   hud.setJob(jobs.active ? jobs.active.name : null, jobs.active ? jobs.objective : null);
 
   // --- the radar: Raka, the heat, the street and the mission target --------
   radar.update(radarState());
+  // Step 14: the nearby Sun Idols draw as gold diamonds on the radar,
+  // after the radar itself (it clears the canvas every frame).
+  collectibles.drawRadarBlips(player.x, player.z);
   // Step 12: the play clock only runs while the world does — never while
   // paused, never on a frozen frame, never mid-cutscene.
   playSeconds += dt;
@@ -1090,7 +1211,9 @@ const clock = new THREE.Clock();
 let firstFrame = true;
 function loop() {
   requestAnimationFrame(loop);
-  const dt = Math.min(clock.getDelta(), 0.05);
+  // Step 14: a clean landing runs a brief slow-motion pulse (0.45x for
+  // 0.7 s) — the world hangs in the air with the jump, then snaps back.
+  const dt = Math.min(clock.getDelta(), 0.05) * (jumps.slowmoActive() ? 0.45 : 1);
   step(dt);
   renderer.render(scene, camera);
   if (firstFrame) {
@@ -1117,6 +1240,15 @@ window.__solmar = {
   get reserve() { return combat.reserve; },
   get reloading() { return combat.reloading; },
   get weapon() { return { name: combat.weaponName, type: combat.weaponType }; },
+  /** Step 14: the selected gun's id, the guns owned, and the pickups. */
+  get weaponId() { return combat.weaponId; },
+  get ownedWeapons() { return combat.owned; },
+  get weaponPickups() { return combat.pickups; },
+  get damageDealt() { return combat.damageDealt; },
+  get lastDamage() { return combat.lastDamage; },
+  get lastPelletsHit() { return combat.lastPelletsHit; },
+  get bloom() { return combat.bloom; },
+  get activeTracers() { return combat.activeTracers; },
   get hits() { return combat.hits; },
   get shotsFired() { return combat.shotsFired; },
   get vehicleName() { return driving ? vehicleName : null; },
@@ -1222,6 +1354,32 @@ window.__solmar = {
   },
   /** Step 13: the bank ledger's entries, oldest first. */
   get ledger() { return phone.ledger; },
+  /** Step 14: the Sun Idols found so far, and the rewards unlocked. */
+  get idols() {
+    return {
+      count: collectibles.count,
+      total: collectibles.total,
+      list: collectibles.list,
+      rewards: collectibles.unlockedRewards,
+    };
+  },
+  /** Step 14: the stunt jumps — the flight, the bests, the chain, the ramps. */
+  get jumps() {
+    return {
+      flying: jumps.flying,
+      flight: jumps.flightInfo,
+      best: jumps.bestScore,
+      chain: jumps.chain,
+      ramps: jumps.list,
+    };
+  },
+  /** Step 14: the ride's height off the ground (0 on the street, up in the air off a ramp). */
+  get vehicleY() { return driving ? vehicle.group.position.y : 0; },
+  /** Step 14: the ride's pitch and roll while it flies (0 on the street). */
+  get vehicleTilt() {
+    if (!driving) return { pitch: 0, roll: 0 };
+    return { pitch: vehicle.group.rotation.x, roll: vehicle.group.rotation.z };
+  },
   /** Step 9: the boats' spots, for the test harness. */
   get boats() {
     return water.boats.map((b) => ({
@@ -1350,8 +1508,48 @@ window.__solmar = {
     },
     /** Step 9: set the stamina at once (the drown check drains it). */
     setStamina(n) { vitals.setStamina(n); },
-    /** Step 10: select a weapon slot at once (1 Fists, 2 Pistol). */
+    /** Step 10: select a weapon slot at once (1 Fists, 2 Pistol, 3 SMG, 4 Shotgun, 5 AR). */
     selectSlot(n) { return combat.selectSlot(n); },
+    /** Step 14: give Raka a gun at once, as if he took its pickup. */
+    giveWeapon(id) { return combat.give(id); },
+    /** Step 14: the guns' state (the test harness reads it). */
+    weaponState() {
+      return {
+        slot: combat.slot,
+        weaponId: combat.weaponId,
+        name: combat.weaponName,
+        type: combat.weaponType,
+        mag: combat.mag,
+        reserve: combat.reserve,
+        reloading: combat.reloading,
+        auto: combat.auto,
+        owned: combat.owned,
+        pickups: combat.pickups,
+        defs: combat.defs,
+        shotsFired: combat.shotsFired,
+        hits: combat.hits,
+        dummyHits: combat.dummyHits,
+        damageDealt: combat.damageDealt,
+        lastDamage: combat.lastDamage,
+        lastPelletsHit: combat.lastPelletsHit,
+        bloom: combat.bloom,
+        activeTracers: combat.activeTracers,
+        hudWeapon: document.getElementById('weapon-name').textContent,
+        hudAmmo: document.getElementById('ammo-num').textContent,
+      };
+    },
+    /** Step 14: put Raka beside the named gun's pickup (on foot). */
+    toPickup(id) {
+      if (driving) return false;
+      const p = combat.pickups.find((pk) => pk.weapon === id);
+      if (!p) return false;
+      hero.group.position.set(p.x + 1.5, 0, p.z);
+      hero.group.visible = true;
+      hero.face(Math.PI);
+      hero.group.rotation.y = Math.PI;
+      speed = 0;
+      return true;
+    },
     /** Step 10: throw a punch at once, as if Raka clicked with the fists. */
     punch() { return combat.punch(); },
     /** Step 10: jump at once, as if Raka pressed Space on land. */
@@ -1508,6 +1706,51 @@ window.__solmar = {
     districtAt(x, z) {
       const d = districts.at(x, z);
       return { name: d.name, standing: districts.standing(d.id), label: districts.label(d.id) };
+    },
+    /** Step 14: put Raka beside the i-th Sun Idol, on foot (for the tests). */
+    toIdol(i) {
+      if (driving) return false;
+      const idol = collectibles.list[i];
+      if (!idol) return false;
+      hero.group.position.set(idol.x + 1.5, 0, idol.z);
+      hero.group.visible = true;
+      hero.face(Math.PI);
+      hero.group.rotation.y = Math.PI;
+      movement.snapTo(0);
+      speed = 0;
+      return true;
+    },
+    /** Step 14: pick the i-th Sun Idol up at once (for the tests). */
+    collectIdol(i) { return collectibles.collectById(i); },
+    /** Step 14: the idols within radar range of a spot (for the tests). */
+    idolBlips(x, z) { return collectibles.blipsNear(x, z); },
+    /**
+     * Step 14: put the ride Raka drives on the approach to the i-th
+     * ramp, facing along it, stopped — drive forward to launch.
+     */
+    toRamp(i) {
+      if (!driving) return false;
+      const ramp = jumps.list[i];
+      if (!ramp) return false;
+      const fx = Math.sin(ramp.yaw);
+      const fz = Math.cos(ramp.yaw);
+      vehicle.group.position.set(ramp.x - fx * 8, 0, ramp.z - fz * 8);
+      vehicle.setHeading(ramp.yaw);
+      vehicle.halt();
+      return true;
+    },
+    /** Step 14: launch a jump off the i-th ramp at once (for the tests). */
+    launchJump(i, speed = 20) {
+      if (!driving) return false;
+      const ramp = jumps.list[i];
+      if (!ramp) return false;
+      return jumps.debugLaunch(vehicle, ramp.id, speed);
+    },
+    /** Step 14: spin the ride in the air (for the flip test). */
+    spinInAir(yaw) {
+      if (!jumps.flying) return false;
+      vehicle.setHeading(yaw);
+      return true;
     },
     /** Step 12: load a slot at once. */
     loadFrom(slot) {
