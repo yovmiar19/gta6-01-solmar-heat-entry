@@ -37,7 +37,7 @@ const SPOTS = [
   { x: -13, z: -22, y: 1.4 }, { x: -32, z: -8, y: 2.2 },
   { x: -45, z: -18, y: 1.4 }, { x: -9, z: -4, y: 1.4 },
   // Lantawa Centre — the avenue itself.
-  { x: 0, z: -18, y: 1.4 }, { x: 0, z: 12, y: 1.4 },
+  { x: 0, z: -18, y: 1.4 }, { x: 3, z: 14, y: 1.4 },
   { x: -6, z: 28, y: 1.4 }, { x: 6, z: -2, y: 2.2 },
   // Banyan Green — east blocks, north of the middle street.
   { x: 13, z: -22, y: 1.4 }, { x: 32, z: -8, y: 1.4 },
