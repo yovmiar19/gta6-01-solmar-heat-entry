@@ -7,6 +7,9 @@
 export const RANK_THRESHOLDS = [0, 300, 750, 1500]; // RP a rank starts at
 export const RP_PER_MISSION = 100; // a story mission's RP
 export const RP_PER_JOB = 50; // a side job's RP
+export const RP_PER_IDOL = 10; // a Sun Idol's RP (step 14): finding the
+// city's hidden gold builds Raka's name, so thirty idols bank exactly
+// one rank's worth (300 RP) on their own.
 
 /** The rank a total of RP sits at (1–4). */
 export function rankFor(rp) {

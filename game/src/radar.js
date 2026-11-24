@@ -128,6 +128,24 @@ export function createRadar() {
         ring(state.jobTarget.x, state.jobTarget.z, 16 * pulse, 'rgba(53, 224, 255, 0.8)', 2);
       }
 
+      // --- the Sun Idols: small gold diamonds for the idols still out -----
+      // Step 14: the game loop passes the uncollected idols within about
+      // 150 m of Raka, so the hunt reads on the map without giving the
+      // whole set away. Smaller and paler than the mission diamond, so
+      // the two never read as the same thing.
+      for (const idol of state.idols ?? []) {
+        const p = toRadar(idol.x, idol.z);
+        const pulse = 1 + 0.25 * Math.sin(time * 5);
+        ctx.fillStyle = '#f2c94c';
+        ctx.beginPath();
+        ctx.moveTo(p.px, p.py - 7 * pulse);
+        ctx.lineTo(p.px + 5 * pulse, p.py);
+        ctx.lineTo(p.px, p.py + 7 * pulse);
+        ctx.lineTo(p.px - 5 * pulse, p.py);
+        ctx.closePath();
+        ctx.fill();
+      }
+
       // --- the street: pedestrians, then the rides -------------------------
       // Pedestrians first, so the rides draw over them where they overlap.
       for (const npc of state.npcs) {

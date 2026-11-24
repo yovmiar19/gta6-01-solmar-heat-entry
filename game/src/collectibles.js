@@ -112,6 +112,11 @@ export function createCollectibles(scene, hooks = {}) {
     const glow = new THREE.Sprite(new THREE.SpriteMaterial({
       map: glowTexture, transparent: true, depthWrite: false,
     }));
+    // The glow is light, not matter: Sprite.raycast needs a camera on
+    // the raycaster (ours has none) and throws on a null camera, so a
+    // shot would crash instead of flying past it. Same guard as the
+    // stars and the rain in environment.js.
+    glow.raycast = () => {};
     glow.scale.set(2.2, 2.2, 1);
     group.add(glow);
     const ring = new THREE.Mesh(
@@ -199,36 +204,6 @@ export function createCollectibles(scene, hooks = {}) {
         if (Math.hypot(idol.x - x, idol.z - z) <= range) out.push({ x: idol.x, z: idol.z });
       }
       return out;
-    },
-    /**
-     * Draw the nearby idols' gold blips onto the radar canvas, after
-     * the radar itself has drawn (it clears the canvas every frame, so
-     * this runs after it). The conversion matches the radar's own:
-     * the map covers x/z -60..60, with a 20px sea band at the bottom.
-     */
-    drawRadarBlips(x, z) {
-      const canvas = document.getElementById('radar');
-      if (!canvas) return;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      const SIZE = 300;
-      const RANGE = 60;
-      const SCALE = SIZE / (RANGE * 2);
-      const pulse = 1 + 0.25 * Math.sin(performance.now() / 1000 * 5);
-      for (const b of this.blipsNear(x, z)) {
-        const px = (b.x + RANGE) * SCALE;
-        const py = b.z <= RANGE
-          ? (b.z + RANGE) * SCALE
-          : SIZE - 20 + ((b.z - RANGE) / 60) * 20;
-        ctx.fillStyle = '#f2c94c';
-        ctx.beginPath();
-        ctx.moveTo(px, py - 7 * pulse);
-        ctx.lineTo(px + 5 * pulse, py);
-        ctx.lineTo(px, py + 7 * pulse);
-        ctx.lineTo(px - 5 * pulse, py);
-        ctx.closePath();
-        ctx.fill();
-      }
     },
     update,
     /** Pick an idol up at once (the test harness walks Raka onto one). */

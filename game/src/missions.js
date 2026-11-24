@@ -23,6 +23,9 @@ const MISSIONS = [
     reward: 800,
     objective: 'Drive to the pier drop-off at the north end',
     target: { x: 0, z: -48 },
+    // Step 14: finishing the Pier Run pays a gun, not just cash — Mira
+    // leaves a shotgun in the drop-off crate for the run home.
+    gunReward: 'shotgun',
   },
   {
     id: 'practice',
@@ -96,6 +99,7 @@ export function createMissions(scene) {
   let armed = false; // the heat job: Raka has been wanted at least once
   let baselineHits = 0; // dummy hits when the range job started
   let pulseTime = 0;
+  let pendingGunReward = null; // a gun the last finished job paid, until taken
 
   /** The job's target spot, or null while it has none (the heat job). */
   function targetPos() {
@@ -169,12 +173,24 @@ export function createMissions(scene) {
       return text;
     },
 
+    /**
+     * Step 14: the gun a finished job paid (a mission's `gunReward`),
+     * or null. Handed out once — the game loop gives it to Raka and
+     * names it on the banner.
+     */
+    takeGunReward() {
+      const reward = pendingGunReward;
+      pendingGunReward = null;
+      return reward;
+    },
+
     /** Back to between jobs (a respawn): the cash stays banked. */
     reset() {
       active = null;
       nextIndex = 0;
       armed = false;
       banner = null;
+      pendingGunReward = null;
       startMarker.group.visible = true;
       targetMarker.group.visible = false;
     },
@@ -190,6 +206,7 @@ export function createMissions(scene) {
       nextIndex = Math.max(0, Math.min(MISSIONS.length, done ?? 0));
       armed = false;
       banner = null;
+      pendingGunReward = null;
       if (nextIndex >= MISSIONS.length) {
         active = null;
         startMarker.group.visible = true;
@@ -276,6 +293,8 @@ export function createMissions(scene) {
       // --- paid, and the next job starts straight away ---------------------
       cash += active.reward;
       banner = `MISSION COMPLETE — ${active.name} +$${active.reward}`;
+      // Step 14: a job with a gun in its pay leaves the gun behind too.
+      if (active.gunReward) pendingGunReward = active.gunReward;
       nextIndex += 1;
       if (nextIndex >= MISSIONS.length) {
         active = null;

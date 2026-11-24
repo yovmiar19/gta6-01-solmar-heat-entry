@@ -38,7 +38,7 @@ import { createStory } from './story.js';
 import { createPause } from './pause.js';
 import { createSound } from './sound.js';
 import { createDistricts } from './districts.js';
-import { createRank, RP_PER_MISSION, RP_PER_JOB } from './rank.js';
+import { createRank, RP_PER_MISSION, RP_PER_JOB, RP_PER_IDOL } from './rank.js';
 import { createJobs } from './jobs.js';
 import { createPhone } from './phone.js';
 import { createCollectibles } from './collectibles.js';
@@ -59,6 +59,7 @@ const BUSTED_HOLD = 2.5; // seconds the BUSTED screen stays up before respawn
 const WASTED_HOLD = 2.5; // seconds the WASTED screen stays up before respawn
 const FOV_NORMAL = 60; // the camera's field of view, in degrees
 const FOV_AIM = 40; // the zoomed-in field of view while Raka aims
+const BLACK_MARKET_AR_PRICE = 1500; // cash for the phone's black-market assault rifle (step 14)
 
 const params = new URLSearchParams(window.location.search);
 const seed = Number.parseInt(params.get('seed') || '7', 10) || 7;
@@ -115,7 +116,11 @@ const jobs = createJobs(scene); // step 13: seven paid side jobs
 const collectibles = createCollectibles(scene, {
   onPickup: (info) => {
     missions.earn(info.cash);
-    districts.rewardJob(info.districtId, info.standing);
+    districts.rewardIdol(info.districtId, info.standing);
+    // Finding the city's hidden gold builds Raka's name: every idol
+    // banks RP toward the next rank, like a mission or a side job.
+    const rankUp = rank.addRp(RP_PER_IDOL);
+    if (rankUp.up) hud.showMissionBanner(`RANK UP — RANK ${rankUp.rank}!`);
     hud.setCash(missions.cash);
     sound.chime();
     writeSave('auto', collectSaveData());
@@ -186,10 +191,27 @@ const jumps = createJumps(scene, {
 });
 const vitals = createVitals();
 const combat = createCombat(scene, hero, police, traffic, () => hud.showHit(), (x, z) => traffic.noteShot(x, z), (x, z) => districts.noteCrimeAt(x, z), (name) => hud.showMissionBanner(`PICKED UP — ${name}!`), () => jobs.completedCount);
+// Step 14: the trunk cache stays shut once Raka owns a shotgun.
+police.setOwnedCheck(() => combat.owns('shotgun'));
 const movement = createMovement(); // step 10: jump, vault, climb
 const input = createInput(canvas, (dx, dy) => chase.orbit(dx, dy));
 const story = createStory(hud, input); // step 11: cutscene dialogue
 const sound = createSound(); // step 12: a tiny WebAudio synth for shots and menus
+/** Step 14: buy the black-market assault rifle (the phone's ORDER button
+ * and the test harness both call this). Cash only, once three district
+ * jobs are done, and never twice. */
+function orderBlackMarketAR() {
+  if (combat.owns('ar')) return false;
+  if (!jobs.blackMarketUnlocked) return false;
+  if (missions.cash < BLACK_MARKET_AR_PRICE) return false;
+  missions.deduct(BLACK_MARKET_AR_PRICE);
+  phone.recordLedger('Black market: Assault Rifle', -BLACK_MARKET_AR_PRICE);
+  combat.give('ar');
+  hud.showMissionBanner('BLACK MARKET — Assault Rifle bought!');
+  hud.setCash(missions.cash);
+  writeSave('auto', collectSaveData());
+  return true;
+}
 // Step 13: the phone — jobs, map, bank, texts. It reads the world through
 // the callbacks below and hands job choices back the same way.
 const phone = createPhone({
@@ -199,6 +221,17 @@ const phone = createPhone({
   onAbandonJob: () => jobs.abandon(),
   getCash: () => missions.cash,
   getRank: () => ({ rank: rank.rank, rp: rank.rp, next: rank.nextThreshold }),
+  // Step 14: the black market — the assault rifle, cash only, once
+  // three side jobs are done (the dealer does not sell to strangers).
+  getBlackMarket: () => ({
+    owned: combat.owns('ar'),
+    jobsDone: jobs.completedCount,
+    jobsNeeded: jobs.blackMarketJobsNeeded,
+    unlocked: jobs.blackMarketUnlocked,
+    price: BLACK_MARKET_AR_PRICE,
+    cash: missions.cash,
+  }),
+  onOrderAR: orderBlackMarketAR,
   sound,
 });
 let introStarted = false; // step 11: the homecoming scene plays once, on load
@@ -450,10 +483,15 @@ function exitVehicle() {
 
 /** The radar's inputs: Raka, the heat, the street, the boats and the mission target. */
 function radarState() {
+  // Behind the wheel the radar follows the ride, not the spot Raka got
+  // in at: the arrow and the idol blips track where he actually is.
+  const px = driving ? vehicle.group.position.x : hero.group.position.x;
+  const pz = driving ? vehicle.group.position.z : hero.group.position.z;
+  const pyaw = driving ? vehicle.yaw : hero.yaw;
   return {
-    x: hero.group.position.x,
-    z: hero.group.position.z,
-    yaw: hero.yaw,
+    x: px,
+    z: pz,
+    yaw: pyaw,
     police: police.patrolPositions,
     heli: police.heliPos,
     vehicles: traffic.vehicles,
@@ -462,6 +500,8 @@ function radarState() {
     sunset: { x: car.group.position.x, z: car.group.position.z },
     target: missions.target,
     jobTarget: jobs.target,
+    // Step 14: the Sun Idols still out there within ~150 m of Raka.
+    idols: collectibles.blipsNear(px, pz),
     districts: districts.list(),
     time: performance.now() / 1000,
   };
@@ -650,6 +690,8 @@ if (frozen) {
   hud.setHealth(vitals.health, vitals.maxHealth);
   hud.setStamina(vitals.stamina, vitals.maxStamina);
   hud.setWeapon(combat.weaponName, combat.weaponType, combat.mag, combat.reserve, combat.reloading);
+  // Step 14: the staged gun reads in Raka's hand too, not just the HUD.
+  hero.setWeapon(combat.weaponId);
 }
 
 // --- the start overlay (step 12) ---------------------------------------------
@@ -805,7 +847,10 @@ function step(dt) {
     // Aim is a on-foot thing: behind the wheel the zoom and the crosshair
     // stay off even if the right button is still held.
     aiming = false;
-    chase.setTargetFov(FOV_NORMAL);
+    // Step 14: mid-jump the camera stays wide (the jump rig pulls the
+    // field of view out to 66 on take-off); forcing 60 here every frame
+    // would stomp it before it ever showed.
+    chase.setTargetFov(jumps.flying ? 66 : FOV_NORMAL);
     hud.setAiming(false);
     vehicle.update(dt, input, world);
     // On a motorbike Raka rides in the open: seat him on it — hips on the
@@ -1050,8 +1095,14 @@ function step(dt) {
     const climbNear = !swimming && !vaultNear && vaultableAhead(0.9, 0.2);
     const climbShown = climbNear
       && world.groundHeightAt(hero.group.position.x, hero.group.position.z) < climbNear.h - 0.05;
+    // Step 14: a patrol car with a shotgun in its trunk, close by — the
+    // prompt names it before the ride does, so the find is not missed.
+    const trunkPos = police.trunk;
+    const trunkNear = trunkPos && !combat.owns('shotgun')
+      && Math.hypot(hero.group.position.x - trunkPos.x, hero.group.position.z - trunkPos.z) < 6;
     hud.setPrompt(
-      vaultNear && running && moving ? 'Press Space to vault'
+      trunkNear ? 'Shotgun in the trunk — get close!'
+      : vaultNear && running && moving ? 'Press Space to vault'
         : climbShown ? 'Press Space to climb up'
         : ride ? (ride.prompt ?? 'Press E to enter the Sunset GT')
         : null,
@@ -1070,6 +1121,9 @@ function step(dt) {
   hud.setHealth(vitals.health, vitals.maxHealth);
   hud.setStamina(vitals.stamina, vitals.maxStamina);
   hud.setWeapon(combat.weaponName, combat.weaponType, combat.mag, combat.reserve, combat.reloading);
+  // Step 14: the gun in Raka's hand follows the selected weapon (its
+  // shape changes per gun; the fists hide it).
+  hero.setWeapon(combat.weaponId);
 
   // --- the heat: crimes, the chase, the bust --------------------------------
   // Speeding and smashing into buildings earn stars; the patrol cars answer
@@ -1091,6 +1145,18 @@ function step(dt) {
   const damage = police.update(dt, player);
   if (damage > 0) vitals.damage(damage);
   hud.setWanted(police.wanted);
+  // Step 14: the trunk cache — Raka close to a patrol car carrying one
+  // lifts the shotgun out of its trunk.
+  const trunk = police.trunk;
+  if (trunk && !combat.owns('shotgun')) {
+    const dTrunk = Math.hypot(player.x - trunk.x, player.z - trunk.z);
+    if (dTrunk < police.trunkRange) {
+      combat.give('shotgun');
+      police.clearTrunk();
+      hud.showMissionBanner('SHOTGUN FOUND — in a patrol car trunk!');
+      sound.chime();
+    }
+  }
   if (police.busted) startBusted();
   else if (vitals.wasted) startWasted();
 
@@ -1129,10 +1195,22 @@ function step(dt) {
     writeSave('auto', collectSaveData());
   }
   const banner = missions.takeBanner();
+  // Step 14: a finished job's gun reward — the Pier Run leaves a
+  // shotgun behind. A gun Raka already owns is not handed out twice.
+  const gunReward = missions.takeGunReward();
+  let gunRewardName = null;
+  if (gunReward && !combat.owns(gunReward)) {
+    combat.give(gunReward);
+    gunRewardName = combat.weaponName;
+    sound.chime();
+  }
   if (banner) {
-    const text = rankUp && rankUp.up ? `${banner} · RANK UP — RANK ${rankUp.rank}!` : banner;
+    let text = rankUp && rankUp.up ? `${banner} · RANK UP — RANK ${rankUp.rank}!` : banner;
+    if (gunRewardName) text += ` · NEW GUN — ${gunRewardName}!`;
     hud.showMissionBanner(text);
     sound.chime();
+  } else if (gunRewardName) {
+    hud.showMissionBanner(`NEW GUN — ${gunRewardName}!`);
   } else if (rankUp && rankUp.up) {
     hud.showMissionBanner(`RANK UP — RANK ${rankUp.rank}!`);
     sound.chime();
@@ -1198,9 +1276,6 @@ function step(dt) {
 
   // --- the radar: Raka, the heat, the street and the mission target --------
   radar.update(radarState());
-  // Step 14: the nearby Sun Idols draw as gold diamonds on the radar,
-  // after the radar itself (it clears the canvas every frame).
-  collectibles.drawRadarBlips(player.x, player.z);
   // Step 12: the play clock only runs while the world does — never while
   // paused, never on a frozen frame, never mid-cutscene.
   playSeconds += dt;
@@ -1244,6 +1319,8 @@ window.__solmar = {
   get weaponId() { return combat.weaponId; },
   get ownedWeapons() { return combat.owned; },
   get weaponPickups() { return combat.pickups; },
+  /** Step 14: the trunk cache's spot, or null while no patrol car carries one. */
+  get trunk() { return police.trunk; },
   get damageDealt() { return combat.damageDealt; },
   get lastDamage() { return combat.lastDamage; },
   get lastPelletsHit() { return combat.lastPelletsHit; },
@@ -1371,10 +1448,16 @@ window.__solmar = {
       best: jumps.bestScore,
       chain: jumps.chain,
       ramps: jumps.list,
+      lastLanding: jumps.lastLanding,
+      slowmo: jumps.slowmoActive(),
     };
   },
   /** Step 14: the ride's height off the ground (0 on the street, up in the air off a ramp). */
   get vehicleY() { return driving ? vehicle.group.position.y : 0; },
+  /** Step 14: true while the ride Raka drives is off the ground (a jump's flight). */
+  get vehicleAirborne() { return driving ? (vehicle.airborne ?? false) : false; },
+  /** Step 14: how strong the take-off camera kick is right now (1 just after launch, 0 at rest). */
+  get camKick() { return chase.kick; },
   /** Step 14: the ride's pitch and roll while it flies (0 on the street). */
   get vehicleTilt() {
     if (!driving) return { pitch: 0, roll: 0 };
@@ -1550,6 +1633,31 @@ window.__solmar = {
       speed = 0;
       return true;
     },
+    /** Step 14: put Raka beside the patrol car carrying the trunk shotgun (on foot). */
+    toTrunk() {
+      if (driving) return false;
+      const t = police.trunk;
+      if (!t) return false;
+      hero.group.position.set(t.x + 2, 0, t.z + 2);
+      hero.group.visible = true;
+      hero.face(Math.atan2(t.x - hero.group.position.x, t.z - hero.group.position.z));
+      hero.group.rotation.y = hero.yaw;
+      speed = 0;
+      return true;
+    },
+    /** Step 14: the black market's state (the test harness reads it). */
+    blackMarketState() {
+      return {
+        owned: combat.owns('ar'),
+        jobsDone: jobs.completedCount,
+        jobsNeeded: jobs.blackMarketJobsNeeded,
+        unlocked: jobs.blackMarketUnlocked,
+        price: BLACK_MARKET_AR_PRICE,
+        cash: missions.cash,
+      };
+    },
+    /** Step 14: order the black-market assault rifle at once (as if Raka tapped ORDER). */
+    orderAR() { return orderBlackMarketAR(); },
     /** Step 10: throw a punch at once, as if Raka clicked with the fists. */
     punch() { return combat.punch(); },
     /** Step 10: jump at once, as if Raka pressed Space on land. */
@@ -1726,15 +1834,23 @@ window.__solmar = {
     idolBlips(x, z) { return collectibles.blipsNear(x, z); },
     /**
      * Step 14: put the ride Raka drives on the approach to the i-th
-     * ramp, facing along it, stopped — drive forward to launch.
+     * ramp, facing along it, stopped — 25 metres back, so a full
+     * throttle run reaches the 60 km/h trigger by the ramp (clamped
+     * to the map's edge where the approach is short). A caller may
+     * pass a shorter run-up (the slow-drive test uses 5 m, so the
+     * car crosses the ramp below the trigger speed).
      */
-    toRamp(i) {
+    toRamp(i, back = 25) {
       if (!driving) return false;
       const ramp = jumps.list[i];
       if (!ramp) return false;
       const fx = Math.sin(ramp.yaw);
       const fz = Math.cos(ramp.yaw);
-      vehicle.group.position.set(ramp.x - fx * 8, 0, ramp.z - fz * 8);
+      vehicle.group.position.set(
+        Math.max(-world.bounds, Math.min(world.bounds, ramp.x - fx * back)),
+        0,
+        Math.max(-world.bounds, Math.min(world.bounds, ramp.z - fz * back)),
+      );
       vehicle.setHeading(ramp.yaw);
       vehicle.halt();
       return true;

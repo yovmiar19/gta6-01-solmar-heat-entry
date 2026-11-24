@@ -90,6 +90,7 @@ const JOBS = [
 
 const TARGET_RANGE = 4; // how close counts as reaching a target
 const MARKER_COLOR = 0x35e0ff; // cyan: a job target, never the mission's gold
+const BLACK_MARKET_JOBS = 3; // district jobs done before the black market dealer sells to Raka (step 14)
 
 /** A glowing marker: a tall column of light and a ring on the ground. */
 function makeMarker(scene, color) {
@@ -207,6 +208,17 @@ export function createJobs(scene) {
     get objective() { return objectiveText(); },
     /** How many jobs are finished in total (repeats count). */
     get completedCount() { return completedCount; },
+    /**
+     * Step 14: how many district jobs the black market wants done
+     * before it sells Raka the assault rifle.
+     */
+    get blackMarketJobsNeeded() { return BLACK_MARKET_JOBS; },
+    /**
+     * Step 14: true once three district jobs are done — the black
+     * market dealer trusts Raka enough to sell him the rifle. The
+     * phone's order button reads this, not a count in main.js.
+     */
+    get blackMarketUnlocked() { return completedCount >= BLACK_MARKET_JOBS; },
     /** The active job's target spot, or null (for the radar and the phone map). */
     get target() { return targetPos(); },
 

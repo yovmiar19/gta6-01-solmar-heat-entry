@@ -19,6 +19,7 @@ const RAM_RANGE = 2.6; // a police car this close rams the player's car
 const RAM_COOLDOWN = 0.6; // seconds between rams from the same chase
 const RAM_DAMAGE = 12; // health a ram costs Raka, jolted in his seat
 const PIN_DAMAGE = 25; // health a second while a patrol car sits on Raka on foot
+const TRUNK_RANGE = 3.0; // how close Raka must be to lift the trunk's shotgun (step 14)
 const POLICE_TOP = 17; // base top speed; +1 per star, so they keep up
 const HELI_HEIGHT = 26; // how high the helicopter circles
 const HELI_RADIUS = 14; // how wide its circle is around the player
@@ -258,6 +259,20 @@ export function createPolice(scene, world) {
   let cooldown = 0; // seconds until another star can be earned
   let quietTime = 0; // seconds since the last crime
   let decayTimer = 0;
+  // Step 14: the trunk cache — at 2 stars and up, the lead patrol car
+  // carries a shotgun in its trunk (KPD armoury issue, left unlocked).
+  // The amber box on its rear marks it; lifting it takes the gun.
+  let trunkArmed = false; // a patrol car out there has a shotgun in its trunk
+  let trunkLooted = false; // Raka already lifted it this run
+  let trunkCar = null; // the patrol car carrying it
+  let trunkOwnedCheck = null; // () => true once Raka owns a shotgun
+  const trunkMarker = new THREE.Mesh(
+    new THREE.BoxGeometry(0.5, 0.28, 0.3),
+    new THREE.MeshStandardMaterial({ color: 0xf2c94c, emissive: 0xf2c94c, emissiveIntensity: 1.4 }),
+  );
+  trunkMarker.visible = false;
+  trunkMarker.raycast = () => {}; // the marker is light, not a wall
+  scene.add(trunkMarker);
   let bustTimer = 0;
   let ramTimer = 0;
 
@@ -335,6 +350,29 @@ export function createPolice(scene, world) {
     /** The helicopter's spot, or null while it is not out (for the radar). */
     get heliPos() {
       return heli ? { x: heli.group.position.x, z: heli.group.position.z } : null;
+    },
+    /**
+     * Step 14: the trunk cache's spot, or null while no patrol car
+     * carries one. The game loop lifts the shotgun when Raka gets
+     * within TRUNK_RANGE of it.
+     */
+    get trunk() {
+      if (!trunkArmed || !trunkCar) return null;
+      return { x: trunkCar.group.position.x, z: trunkCar.group.position.z };
+    },
+    /** Step 14: how close Raka must be to lift the trunk's shotgun. */
+    get trunkRange() { return TRUNK_RANGE; },
+    /** Step 14: tell the police whether Raka already owns a shotgun (the cache stays shut then). */
+    setOwnedCheck(fn) { trunkOwnedCheck = fn; },
+    /**
+     * Step 14: the trunk is empty — Raka lifted the shotgun. It stays
+     * empty until a respawn.
+     */
+    clearTrunk() {
+      trunkLooted = true;
+      trunkArmed = false;
+      trunkCar = null;
+      trunkMarker.visible = false;
     },
     /** Distance to the nearest patrol car, or Infinity while none are out. */
     nearestCarDistance(x, z) {
@@ -427,6 +465,10 @@ export function createPolice(scene, world) {
       decayTimer = 0;
       bustTimer = 0;
       ramTimer = 0;
+      trunkArmed = false;
+      trunkLooted = false;
+      trunkCar = null;
+      trunkMarker.visible = false;
       while (cars.length > 0) scene.remove(cars.pop().group);
       if (heli) {
         scene.remove(heli.group);
@@ -474,6 +516,35 @@ export function createPolice(scene, world) {
       }
 
       syncCars(player.x, player.z);
+
+      // --- the trunk cache: at 2 stars the lead patrol car carries a
+      // shotgun in its trunk. The marker rides on its rear; if the car
+      // leaves the road (the heat cooled off) the cache goes with it
+      // and can arm again on the next chase — unless Raka already
+      // owns a shotgun, in which case it never arms at all.
+      if (!trunkLooted && wanted >= 2 && !trunkArmed && cars.length > 0
+        && !(trunkOwnedCheck && trunkOwnedCheck())) {
+        trunkArmed = true;
+        trunkCar = cars[0];
+      }
+      if (trunkArmed) {
+        if (!trunkCar || !cars.includes(trunkCar)) {
+          trunkArmed = false;
+          trunkCar = null;
+          trunkMarker.visible = false;
+        } else {
+          const fx = Math.sin(trunkCar.yaw);
+          const fz = Math.cos(trunkCar.yaw);
+          trunkMarker.position.set(
+            trunkCar.group.position.x - fx * 2.3,
+            0.9,
+            trunkCar.group.position.z - fz * 2.3,
+          );
+          trunkMarker.visible = true;
+        }
+      } else {
+        trunkMarker.visible = false;
+      }
 
       // --- the chase: steer at the player, ram the car, pin the player ------
       // Up close the patrol car matches the player's pace so it stays on the

@@ -82,6 +82,7 @@ export function createJumps(scene, hooks = {}) {
   let chain = 0; // clean landings in a row, inside the chain window
   let lastCleanAt = -Infinity; // game seconds of the last clean landing
   let flight = null; // the jump in the air, or null
+  let lastLanding = null; // the last landing's result, for the HUD and the tests
   let slowmoUntil = -Infinity; // game seconds the slow-mo pulse runs to
   let now = 0; // game seconds, advanced by update()
   const puffs = []; // landing dust, fading out
@@ -208,8 +209,9 @@ export function createJumps(scene, hooks = {}) {
     spawnPuffs(vehicle.group.position.x, 0, vehicle.group.position.z, overWater);
     if (hit) {
       chain = 0;
+      lastLanding = { type: 'crash', ramp: f.ramp.id, name: f.ramp.name, airTime, flips, score: 0, cash: 0 };
       onEvent({ type: 'crash', ramp: f.ramp.id, name: f.ramp.name, airTime, flips });
-      return { type: 'crash', airTime, flips, score: 0, cash: 0 };
+      return lastLanding;
     }
     if (aligned && speedNow >= CLEAN_MIN_SPEED) {
       const score = Math.round(airTime * 100) + flips * FLIP_BONUS + CLEAN_BONUS;
@@ -219,21 +221,23 @@ export function createJumps(scene, hooks = {}) {
       if (score > (best.get(f.ramp.id) ?? 0)) best.set(f.ramp.id, score);
       if (score > totalBest) totalBest = score;
       slowmoUntil = now + 0.7; // a brief slow-motion pulse on a clean landing
-      onEvent({
+      lastLanding = {
         type: 'clean', ramp: f.ramp.id, name: f.ramp.name,
         airTime, flips, score, cash, chain, overWater,
-      });
-      return { type: 'clean', airTime, flips, score, cash, chain };
+      };
+      onEvent(lastLanding);
+      return lastLanding;
     }
     chain = 0;
     const score = Math.round(airTime * 50) + flips * 50;
     if (score > (best.get(f.ramp.id) ?? 0)) best.set(f.ramp.id, score);
     if (score > totalBest) totalBest = score;
-    onEvent({
+    lastLanding = {
       type: 'rough', ramp: f.ramp.id, name: f.ramp.name,
       airTime, flips, score, cash: 0,
-    });
-    return { type: 'rough', airTime, flips, score, cash: 0 };
+    };
+    onEvent(lastLanding);
+    return lastLanding;
   }
 
   return {
@@ -254,6 +258,8 @@ export function createJumps(scene, hooks = {}) {
         airTime: flight.t, totalYaw: flight.totalYaw,
       };
     },
+    /** The last landing's result, or null before any jump has landed. */
+    get lastLanding() { return lastLanding; },
     /** True while the clean-landing slow-motion pulse is running. */
     slowmoActive() { return now < slowmoUntil; },
     /** The best single-jump score anywhere. */
@@ -305,6 +311,9 @@ export function createJumps(scene, hooks = {}) {
       if (!driving || !vehicle) return;
       const speed = Math.abs(vehicle.speed ?? 0);
       if (speed < MIN_SPEED) return;
+      // Never trigger twice mid-air: the car reads airborne while it
+      // flies, so a second ramp under the flight path cannot relaunch it.
+      if (vehicle.airborne) return;
       const fx = Math.sin(vehicle.yaw);
       const fz = Math.cos(vehicle.yaw);
       for (const ramp of RAMPS) {
@@ -317,7 +326,7 @@ export function createJumps(scene, hooks = {}) {
         if (fx * rx + fz * rz < TRIGGER_DOT) continue;
         startFlight(vehicle, ramp, speed);
         if (chase) {
-          chase.setDistance(11.5); // the camera pulls back off the ramp
+          chase.jumpKick(); // the camera pulls back and wobbles off the ramp
           chase.setTargetFov(66);
         }
         return;
@@ -326,12 +335,16 @@ export function createJumps(scene, hooks = {}) {
 
     /**
      * Launch a flight off a ramp at once (the test harness stages a
-     * jump without driving up to the ramp at 60 km/h first).
+     * jump without driving up to the ramp at 60 km/h first). The ride
+     * is put at the launch speed first, so the flight rolls forward
+     * and lands rolling — a standing hop would land at 0 km/h and
+     * could never count as clean.
      */
     debugLaunch(vehicle, rampId, speed = 20) {
       const ramp = RAMPS.find((r) => r.id === rampId);
       if (!ramp || !vehicle || flight) return false;
       cooldowns.delete(ramp.id);
+      if (typeof vehicle.setSpeed === 'function') vehicle.setSpeed(speed);
       startFlight(vehicle, ramp, speed);
       return true;
     },

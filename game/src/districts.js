@@ -25,6 +25,7 @@ export const DISTRICTS = [
 
 const START_STANDING = 50; // every district starts NEUTRAL
 const JOB_WARMTH = 8; // standing a finished job earns its home district
+const IDOL_WARMTH = 2; // standing a Sun Idol pickup earns its home district
 const CRIME_CHILL = 5; // standing a crime in a district costs it
 
 /** The label for a standing score (0–100). */
@@ -88,6 +89,17 @@ export function createDistricts() {
      * Returns the new standing.
      */
     rewardJob(id, amount = JOB_WARMTH) {
+      const next = clamp((standings.get(id) ?? START_STANDING) + amount);
+      standings.set(id, next);
+      return next;
+    },
+
+    /**
+     * A Sun Idol picked up in a district (step 14): a small standing
+     * bump, a couple of points — the district notices Raka finding its
+     * hidden gold. Returns the new standing.
+     */
+    rewardIdol(id, amount = IDOL_WARMTH) {
       const next = clamp((standings.get(id) ?? START_STANDING) + amount);
       standings.set(id, next);
       return next;

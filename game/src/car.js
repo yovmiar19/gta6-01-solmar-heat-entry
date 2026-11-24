@@ -104,6 +104,12 @@ export function createCar() {
     get yaw() { return yaw; },
     /** Signed speed in metres per second. */
     get speed() { return speed; },
+    /**
+     * True while the car is off the ground (step 14): a stunt jump's
+     * flight lifts the whole group, so the height reads straight off
+     * it. The jump rig uses it to never trigger twice mid-air.
+     */
+    get airborne() { return group.position.y > 0.05; },
     /** Building scrapes so far (one per scrape, not per frame). */
     get hits() { return hits; },
     /** A police ram: lose more than half the speed at once. */
@@ -115,6 +121,14 @@ export function createCar() {
     },
     /** Stop the car dead (used when the player gets out). */
     halt() { speed = 0; },
+    /**
+     * Set the speed at once (step 14: a staged jump launch puts the
+     * car at the launch speed, so the flight behaves like a real
+     * drive-up to the ramp instead of a standing hop).
+     */
+    setSpeed(next) {
+      speed = Math.max(-REVERSE_TOP, Math.min(TOP_SPEED, next));
+    },
     /**
      * Drive one frame. `input` carries the keys; `world` carries the bounds
      * and the building colliders. The car steers around its own heading.

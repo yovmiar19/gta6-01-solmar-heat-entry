@@ -50,6 +50,42 @@ export function createProtagonist() {
   const armL = makeArm(-1);
   const armR = makeArm(1);
 
+  // --- the gun in Raka's right hand (step 14) -------------------------------
+  // One small group, reshaped per weapon: the barrel's length, a
+  // magazine under the SMG and the rifle, a pump under the shotgun.
+  // It hangs from the hand along the arm (local -y), so it points
+  // forward when the arm aims and down when the arm hangs. The fists
+  // hide it. Its meshes never stop a round (same guard as the muzzle
+  // flash): the ray starts at his chest and the gun sits in his hand.
+  const gun = new THREE.Group();
+  const gunMat = new THREE.MeshStandardMaterial({ color: 0x1a1a1a, roughness: 0.4, metalness: 0.6 });
+  const woodMat = new THREE.MeshStandardMaterial({ color: 0x3a2a1a, roughness: 0.8 });
+  const gunBarrel = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.3, 0.07), gunMat);
+  gunBarrel.position.y = -0.18;
+  gun.add(gunBarrel);
+  const gunGrip = new THREE.Mesh(new THREE.BoxGeometry(0.07, 0.14, 0.07), woodMat);
+  gunGrip.position.y = 0.02;
+  gun.add(gunGrip);
+  const gunMag = new THREE.Mesh(new THREE.BoxGeometry(0.06, 0.22, 0.06), gunMat);
+  gunMag.position.set(0, -0.12, 0.05);
+  gun.add(gunMag);
+  const gunPump = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.16, 0.09), woodMat);
+  gunPump.position.set(0, -0.3, 0.05);
+  gun.add(gunPump);
+  gun.position.set(0, -0.66, 0.04);
+  gun.traverse((child) => { child.raycast = () => {}; });
+  armR.add(gun);
+  // Barrel lengths per gun (metres past the hand); the pump and the
+  // magazine only show where the gun has one.
+  const GUN_SHAPES = {
+    pistol: { barrel: 0.3, mag: false, pump: false, longGun: false },
+    smg: { barrel: 0.45, mag: true, pump: false, longGun: false },
+    shotgun: { barrel: 0.75, mag: false, pump: true, longGun: true },
+    ar: { barrel: 0.7, mag: true, pump: false, longGun: true },
+  };
+  let gunId = 'pistol'; // the gun in his hand (or 'fists': no gun at all)
+  let longGun = false; // a long gun aims two-handed (the left arm supports it)
+
   // --- legs, pivoted at the hips --------------------------------------------
   function makeLeg(side) {
     const pivot = new THREE.Group();
@@ -91,6 +127,32 @@ export function createProtagonist() {
       // every frame anyway.
       if (on) armR.rotation.x = -1.5;
     },
+    /**
+     * Step 14: put a gun in Raka's right hand ('pistol' | 'smg' |
+     * 'shotgun' | 'ar'; 'fists' hides it). A long gun (shotgun, rifle)
+     * aims two-handed: the left arm comes forward to support it. A
+     * repeat call with the same gun costs nothing.
+     */
+    setWeapon(id) {
+      if (id === gunId) return;
+      gunId = id;
+      const shape = GUN_SHAPES[id];
+      if (!shape) {
+        gun.visible = false;
+        longGun = false;
+        return;
+      }
+      gun.visible = true;
+      longGun = shape.longGun;
+      gunBarrel.scale.y = shape.barrel / 0.3;
+      gunBarrel.position.y = -0.03 - shape.barrel / 2;
+      gunMag.visible = shape.mag;
+      gunMag.position.y = -0.1 - shape.barrel * 0.25;
+      gunPump.visible = shape.pump;
+      gunPump.position.y = -0.12 - shape.barrel * 0.45;
+    },
+    /** The gun in Raka's hand right now ('fists' when unarmed). */
+    get weaponId() { return gunId; },
     /** Throw a punch: the right arm swings forward for a third of a second (step 10). */
     punch() {
       punchTimer = 0.35;
@@ -203,7 +265,7 @@ export function createProtagonist() {
         const swing = Math.min(1, speed / 6);
         legL.rotation.x = Math.sin(walkPhase) * 0.55 * swing;
         legR.rotation.x = -Math.sin(walkPhase) * 0.55 * swing;
-        armL.rotation.x = punchTimer > 0 ? punchSwing * 0.35 : -Math.sin(walkPhase) * 0.45 * swing;
+        armL.rotation.x = punchTimer > 0 ? punchSwing * 0.35 : (aiming && longGun) ? -1.35 : -Math.sin(walkPhase) * 0.45 * swing;
         // Aiming holds the right arm forward (the pistol); a punch swings
         // it instead; otherwise it swings with the walk.
         armR.rotation.x = punchTimer > 0 ? punchSwing : aiming ? -1.5 : Math.sin(walkPhase) * 0.45 * swing;
@@ -215,7 +277,7 @@ export function createProtagonist() {
         // Idle: limbs settle, breathing bob. The aim pose holds through it.
         idleTime += dt;
         legL.rotation.x *= 0.8; legR.rotation.x *= 0.8;
-        armL.rotation.x = punchTimer > 0 ? punchSwing * 0.35 : armL.rotation.x * 0.8;
+        armL.rotation.x = punchTimer > 0 ? punchSwing * 0.35 : (aiming && longGun) ? -1.35 : armL.rotation.x * 0.8;
         armR.rotation.x = punchTimer > 0 ? punchSwing : aiming ? -1.5 : armR.rotation.x * 0.8;
         body.rotation.x *= 0.8;
         group.position.y = groundY + Math.sin(idleTime * 2) * 0.015;

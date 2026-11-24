@@ -247,12 +247,38 @@ export function createPhone(deps) {
     } else if (tab === 'bank') {
       const cash = deps.getCash();
       const rank = deps.getRank();
+      // Step 14: the black market — an assault rifle, cash only, and only
+      // once three side jobs are done (the dealer does not sell to
+      // strangers). The button says what is missing, if anything.
+      const market = deps.getBlackMarket ? deps.getBlackMarket() : null;
+      let marketCard = '';
+      if (market) {
+        const jobsShort = Math.max(0, market.jobsNeeded - market.jobsDone);
+        const cashShort = Math.max(0, market.price - market.cash);
+        const label = market.owned ? 'OWNED ✓'
+          : jobsShort > 0 ? `NEEDS ${jobsShort} MORE JOB${jobsShort > 1 ? 'S' : ''} (${market.jobsDone}/${market.jobsNeeded})`
+          : cashShort > 0 ? `NEEDS $${cashShort.toLocaleString('en-US')} MORE`
+          : `ORDER — $${market.price.toLocaleString('en-US')}`;
+        const disabled = market.owned || jobsShort > 0 || cashShort > 0 ? ' disabled' : '';
+        marketCard = `<div class="job-card"><div class="job-head"><span class="job-name">BLACK MARKET</span></div>`
+          + `<div class="job-desc">Assault Rifle — long range, tight aim. No questions asked.</div>`
+          + `<div class="job-meta">$${market.price.toLocaleString('en-US')} · needs ${market.jobsNeeded} side jobs done</div>`
+          + `<div class="job-btns"><button id="blackmarket-order" class="pause-btn"${disabled}>${label}</button></div></div>`;
+      }
       bankListEl.innerHTML = ''
+        + marketCard
         + `<div class="phone-row"><span class="k">BALANCE</span><span class="v in">$${cash.toLocaleString('en-US')}</span></div>`
         + `<div class="phone-row"><span class="k">RANK</span><span class="v">RANK ${rank.rank} · ${rank.rp}${rank.next === null ? ' RP · MAX' : ` / ${rank.next} RP`}</span></div>`
         + (ledger.length === 0
           ? '<div class="phone-note">No transactions yet — finish a mission or a job.</div>'
           : ledger.slice().reverse().map(bankRow).join(''));
+      const orderBtn = document.getElementById('blackmarket-order');
+      if (orderBtn) {
+        orderBtn.addEventListener('click', () => {
+          deps.sound.click();
+          if (deps.onOrderAR && deps.onOrderAR()) renderCurrent();
+        });
+      }
     } else if (tab === 'texts') {
       textsListEl.innerHTML = TEXTS.map((t) => (
         `<div class="text-msg"><div class="text-head"><span style="color:${t.color}">${t.who}</span>`

@@ -13,6 +13,8 @@ export function createChaseCamera(camera) {
   const desired = new THREE.Vector3();
   const lookAt = new THREE.Vector3();
   let targetFov = 60; // the field of view the camera eases toward (aim narrows it)
+  let kick = 0; // a jump take-off kick: 1 just after launch, decaying to 0
+  let kickTime = 0; // seconds since the kick started (drives the wobble)
 
   /** Shortest signed angle from `from` to `to`. */
   function angleDelta(from, to) {
@@ -36,6 +38,17 @@ export function createChaseCamera(camera) {
     setDistance(nextDistance) { distance = nextDistance; },
     /** Ease the field of view toward a target (aim narrows it: a zoom-in). */
     setTargetFov(fov) { targetFov = fov; },
+    /**
+     * A jump take-off kick (step 14): the camera pulls back and wobbles
+     * for a beat as the ride leaves the ramp, then settles again. The
+     * kick decays over about 0.7 s, so a landing never inherits it.
+     */
+    jumpKick() {
+      kick = 1;
+      kickTime = 0;
+    },
+    /** How strong the take-off kick is right now (1 just after launch, 0 at rest). */
+    get kick() { return kick; },
     /** The camera's current field of view, in degrees. */
     get fov() { return camera.fov; },
     /** Ease the camera's yaw toward a heading (the car pulls it behind it). */
@@ -64,11 +77,19 @@ export function createChaseCamera(camera) {
         camera.fov = nextFov;
         camera.updateProjectionMatrix();
       }
-      const horizontal = Math.cos(pitch) * distance;
+      // A take-off kick pulls the camera back a few metres and wobbles
+      // it side to side, fading over about 0.7 s.
+      if (kick > 0) {
+        kickTime += dt;
+        kick = Math.max(0, 1 - kickTime / 0.7);
+      }
+      const kickDistance = 3.5 * kick;
+      const wobbleYaw = yaw + Math.sin(kickTime * 22) * 0.025 * kick;
+      const horizontal = Math.cos(pitch) * (distance + kickDistance);
       desired.set(
-        target.x + Math.sin(yaw) * horizontal,
-        target.y + lookHeight + Math.sin(pitch) * distance,
-        target.z + Math.cos(yaw) * horizontal,
+        target.x + Math.sin(wobbleYaw) * horizontal,
+        target.y + lookHeight + Math.sin(pitch) * (distance + kickDistance),
+        target.z + Math.cos(wobbleYaw) * horizontal,
       );
       if (snap) {
         camera.position.copy(desired);
