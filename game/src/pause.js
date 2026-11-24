@@ -83,6 +83,22 @@ export function createPause(deps) {
     ctx.fillRect(0, S - MAP_SEA, S, MAP_SEA);
     ctx.fillStyle = 'rgba(244, 251, 255, 0.7)';
     ctx.fillRect(0, S - MAP_SEA, S, 2);
+    // Step 13: the district names and their standing, at each centre.
+    if (state.districts) {
+      ctx.font = 'bold 12px system-ui, sans-serif';
+      ctx.textAlign = 'center';
+      for (const d of state.districts) {
+        const cx = (d.x0 + d.x1) / 2;
+        const cz = (d.z0 + d.z1) / 2;
+        const p = toMap(cx, cz);
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+        ctx.fillText(d.name.toUpperCase(), p.px, p.py - 3);
+        ctx.fillStyle = d.standing >= 60 ? '#7ed957' : d.standing < 40 ? '#ff6b5e' : '#ffd97a';
+        ctx.font = '10px system-ui, sans-serif';
+        ctx.fillText(`${d.label} ${d.standing}`, p.px, p.py + 11);
+        ctx.font = 'bold 12px system-ui, sans-serif';
+      }
+    }
     // A gold border and an N for north.
     ctx.strokeStyle = 'rgba(242, 201, 76, 0.55)';
     ctx.lineWidth = 2;
@@ -164,12 +180,15 @@ export function createPause(deps) {
       statsListEl.innerHTML = ''
         + row('CASH', `$${s.cash.toLocaleString('en-US')}`)
         + row('MISSIONS', `${s.completed} / ${s.total}${s.activeName ? ` — ${s.activeName}` : ''}`)
+        + row('SIDE JOBS', `${s.jobsCompleted}${s.activeJobName ? ` — ${s.activeJobName}` : ''}`)
+        + row('RANK', `RANK ${s.rank} · ${s.rp}${s.rpNext === null ? ' RP · MAX' : ` / ${s.rpNext} RP`}`)
         + row('WANTED', s.wanted > 0 ? '★'.repeat(s.wanted) + '☆'.repeat(5 - s.wanted) : 'CLEAN')
         + row('HEALTH', `${Math.round(s.health)} / 100`)
         + row('STAMINA', `${Math.round(s.stamina)} / 100`)
         + row('STORY BEATS', String(s.beats))
         + row('PLAY TIME', clockOf(s.playSeconds))
-        + row('GAME TIME', `${s.clockText} · ${s.phase} · ${s.weather}`);
+        + row('GAME TIME', `${s.clockText} · ${s.phase} · ${s.weather}`)
+        + (s.standings ?? []).map((d) => row(d.name.toUpperCase(), `${d.label} ${d.standing}`)).join('');
     } else if (tab === 'settings') {
       soundBtn.textContent = deps.settings.sound ? 'ON' : 'OFF';
       qualityBtn.textContent = deps.settings.quality === 'low' ? 'LOW' : 'HIGH';

@@ -1,4 +1,4 @@
-// SOLMAR HEAT, step 12 — the entrypoint. It builds the renderer, the city,
+// SOLMAR HEAT, step 13 — the entrypoint. It builds the renderer, the city,
 // Raka, his Sunset GT and the third-person camera, then runs the loop: on
 // foot, read the input, move Raka camera-relative and chase him; near a ride,
 // E gets him in, and driving switches to arcade car controls with the camera
@@ -13,7 +13,10 @@
 // driving the HUD names the ride he is in. Esc (or P) pauses the world
 // and opens the pause menu — map, story, stats, settings, controls, save —
 // and the game saves to three slots in localStorage, plus an autosave
-// whenever a mission pays out. With ?shot=chase|street|closeup|drive|shoot&seed=7 in the URL it stages
+// whenever a mission pays out. T opens the phone — jobs, map, bank,
+// texts — and the world freezes behind it, the same as the pause menu.
+// The phone's side jobs pay cash, warm up their home district and bank
+// RP toward the next rank. With ?shot=chase|street|closeup|drive|shoot&seed=7 in the URL it stages
 // one deterministic screenshot scene instead and holds the frame.
 
 import { createWorld } from './world.js';
@@ -34,6 +37,10 @@ import { createMovement } from './movement.js';
 import { createStory } from './story.js';
 import { createPause } from './pause.js';
 import { createSound } from './sound.js';
+import { createDistricts } from './districts.js';
+import { createRank, RP_PER_MISSION, RP_PER_JOB } from './rank.js';
+import { createJobs } from './jobs.js';
+import { createPhone } from './phone.js';
 import { listSaves, readSave, writeSave, clearSaves, latestSave } from './save.js';
 import { stageShot } from './shots.js';
 
@@ -84,7 +91,11 @@ car.setHeading(Math.PI); // facing north, up the avenue
 scene.add(car.group);
 
 const police = createPolice(scene, world);
-const traffic = createTraffic(scene, world, police);
+// Step 13: the districts keep score of how the city feels about Raka.
+// Hitting a pedestrian sours the district he stands in (the traffic and
+// combat rigs report the crime's spot through the same callback).
+const districts = createDistricts();
+const traffic = createTraffic(scene, world, police, (x, z) => districts.noteCrimeAt(x, z));
 const env = createEnvironment(scene, world); // step 8: day-night, weather, lights
 const water = createWater(scene, world); // step 9: beach, sea, boats, swim
 
@@ -92,12 +103,25 @@ const chase = createChaseCamera(camera);
 const hud = createHud();
 const radar = createRadar();
 const missions = createMissions(scene);
+const rank = createRank(); // step 13: RANK 1 starts at 0 / 300 RP
+const jobs = createJobs(scene); // step 13: seven paid side jobs
 const vitals = createVitals();
-const combat = createCombat(scene, hero, police, traffic, () => hud.showHit(), (x, z) => traffic.noteShot(x, z));
+const combat = createCombat(scene, hero, police, traffic, () => hud.showHit(), (x, z) => traffic.noteShot(x, z), (x, z) => districts.noteCrimeAt(x, z));
 const movement = createMovement(); // step 10: jump, vault, climb
 const input = createInput(canvas, (dx, dy) => chase.orbit(dx, dy));
 const story = createStory(hud, input); // step 11: cutscene dialogue
 const sound = createSound(); // step 12: a tiny WebAudio synth for shots and menus
+// Step 13: the phone — jobs, map, bank, texts. It reads the world through
+// the callbacks below and hands job choices back the same way.
+const phone = createPhone({
+  getMapState: () => radarState(),
+  getJobs: () => jobs.list,
+  onAcceptJob: (id) => jobs.accept(id),
+  onAbandonJob: () => jobs.abandon(),
+  getCash: () => missions.cash,
+  getRank: () => ({ rank: rank.rank, rp: rank.rp, next: rank.nextThreshold }),
+  sound,
+});
 let introStarted = false; // step 11: the homecoming scene plays once, on load
 let cutsceneHint = false; // step 11: the dialogue hint line is showing
 let playSeconds = 0; // step 12: seconds played (the STATS tab shows it)
@@ -169,7 +193,18 @@ let lastVehicleHits = 0; // the vehicle.hits count the last crime check saw
 function startBusted() {
   busted = true;
   bustedTimer = 0;
-  hud.showBusted(true);
+  // Step 13: getting caught costs a fine — $50 or 10% of the cash,
+  // whichever is smaller — and Mira posts the bail. The ledger records
+  // it, the BUSTED screen names it, and the autosave keeps it.
+  const fine = missions.deduct(Math.min(50, Math.floor(missions.cash * 0.1)));
+  if (fine > 0) {
+    phone.recordLedger('KPD fine — BUSTED', -fine);
+    hud.showBusted(true, `Busted — bail posted by Mira. Fine: $${fine}.`);
+    hud.setCash(missions.cash);
+    writeSave('auto', collectSaveData());
+  } else {
+    hud.showBusted(true);
+  }
 }
 
 // WASTED: Raka's health ran out. Controls freeze, the WASTED screen goes up,
@@ -215,6 +250,9 @@ function respawn() {
   traffic.reset();
   water.reset();
   missions.reset();
+  // Step 13: a bust or a waste ends the run's in-progress work — the
+  // side job drops with the story chain (the cash stays banked).
+  jobs.reset();
   vitals.reset();
   combat.reset();
   chase.setDistance(FOOT_CAM_DISTANCE);
@@ -344,6 +382,8 @@ function radarState() {
     npcs: traffic.npcs,
     sunset: { x: car.group.position.x, z: car.group.position.z },
     target: missions.target,
+    jobTarget: jobs.target,
+    districts: districts.list(),
     time: performance.now() / 1000,
   };
 }
@@ -372,6 +412,12 @@ function collectSaveData() {
     wanted: police.wanted,
     weaponSlot: combat.slot,
     playSeconds,
+    // Step 13: rank, district standings, side jobs and the bank ledger.
+    rankRp: rank.rp,
+    standings: districts.snapshot(),
+    jobsCompleted: jobs.completedCount,
+    activeJob: jobs.active ? { id: jobs.active.id, stage: jobs.stageIndex } : null,
+    ledger: phone.ledger,
   };
 }
 
@@ -384,6 +430,12 @@ function applySave(data) {
   if (driving) exitVehicle();
   missions.restore(data.cash ?? 0, data.completedCount ?? 0);
   story.restoreLog(data.storyLog ?? []);
+  // Step 13: the rank, the district standings, the side job in progress
+  // and the bank ledger come back with the rest of the game.
+  rank.restore(data.rankRp ?? 0);
+  districts.restore(data.standings ?? null);
+  jobs.restore(data.activeJob ?? null, data.jobsCompleted ?? 0);
+  phone.restoreLedger(data.ledger ?? []);
   const hx = data.hero?.x ?? 0;
   const hz = data.hero?.z ?? 10;
   const hyaw = data.hero?.yaw ?? Math.PI;
@@ -429,6 +481,13 @@ const pause = createPause({
     clockText: env.clockText,
     phase: env.phase,
     weather: env.weather,
+    // Step 13: rank, RP, side jobs and the district standings.
+    rank: rank.rank,
+    rp: rank.rp,
+    rpNext: rank.nextThreshold,
+    jobsCompleted: jobs.completedCount,
+    activeJobName: jobs.active ? jobs.active.name : null,
+    standings: districts.list(),
   }),
   getStoryLog: () => story.log,
   settings,
@@ -530,6 +589,16 @@ document.getElementById('start-new').addEventListener('click', () => {
 function step(dt) {
   // Step 12: the start overlay waits for a choice before the world runs.
   if (startPending) return;
+  // Step 13: the phone — T opens it, Esc or T closes it. While it is
+  // open the world freezes like the pause menu, but it is a separate
+  // screen: Esc over the phone closes the phone, never the pause menu.
+  // Presses made over the phone are drained, so a Space or a click over
+  // it never fires a jump or a shot the moment play resumes.
+  if (phone.open) {
+    if (input.takeSkip() || input.takePhone()) phone.closeMenu();
+    input.drain();
+    return;
+  }
   // Step 12: pause — Esc/P toggles, but never during a cutscene (there
   // Esc skips the dialogue instead). While paused the world is frozen:
   // no clock, no weather, no traffic, no missions. Presses made over the
@@ -542,13 +611,20 @@ function step(dt) {
     input.drain();
     return;
   }
+  // Step 13: T opens the phone (never during a cutscene, like the pause
+  // menu). The jump-the-clock key is gone: the clock only moves through
+  // the debug API now (__solmar.debug.setTime(h)).
+  if (!story.playing && input.takePhone()) phone.toggle();
+  if (phone.open) {
+    input.drain();
+    return;
+  }
 
   world.update(dt);
-  // Step 8: C turns the weather (clear → rain → fog → storm), T jumps the
-  // clock two hours ahead. Both work on foot and behind the wheel. They run
-  // before the sky update, so the HUD clock reads the jumped time at once.
+  // Step 8: C turns the weather (clear → rain → fog → storm). It works
+  // on foot and behind the wheel. It runs before the sky update, so the
+  // HUD clock reads the jumped time at once.
   if (input.takeWeather()) env.cycleWeather();
-  if (input.takeTime()) env.advanceTime(2);
   // Step 8: the sky turns (the clock runs, the weather may turn) and the
   // HUD clock reads it. A staged screenshot frame holds the light still:
   // frozen frames never advance the clock or turn the weather.
@@ -570,6 +646,7 @@ function step(dt) {
     chase.update(dt, shotFocus, true);
     radar.update(radarState());
     missions.pulse(dt);
+    jobs.pulse(dt);
     return;
   }
 
@@ -918,6 +995,7 @@ function step(dt) {
   // Step 11: what the chain looked like before this frame, so a job
   // starting or paying out can get its story beat.
   const wasActiveId = missions.active ? missions.active.id : null;
+  const wasActiveName = missions.active ? missions.active.name : null;
   const wasCash = missions.cash;
   missions.update(dt, {
     x: player.x,
@@ -928,11 +1006,6 @@ function step(dt) {
     dummyHits: combat.dummyHits,
     vehicles: traffic.vehicles,
   });
-  const banner = missions.takeBanner();
-  if (banner) {
-    hud.showMissionBanner(banner);
-    sound.chime();
-  }
   // Step 11: a job that just paid out gets its last word, and a job that
   // just started gets its intro — in that order, queued behind each
   // other. The last job pays out into the all-jobs-done line as well.
@@ -942,8 +1015,22 @@ function step(dt) {
   }
   // Step 12: a payout autosaves, so a crash never eats a finished job.
   // It runs even with the story switched off — a payout is a payout.
+  // Step 13: a mission payout also banks 100 RP and writes the bank
+  // ledger, story on or off. A rank-up rides on the same banner.
+  let rankUp = null;
   if (missions.cash > wasCash && wasActiveId) {
+    rankUp = rank.addRp(RP_PER_MISSION);
+    phone.recordLedger(`Mission: ${wasActiveName ?? wasActiveId}`, missions.cash - wasCash);
     writeSave('auto', collectSaveData());
+  }
+  const banner = missions.takeBanner();
+  if (banner) {
+    const text = rankUp && rankUp.up ? `${banner} · RANK UP — RANK ${rankUp.rank}!` : banner;
+    hud.showMissionBanner(text);
+    sound.chime();
+  } else if (rankUp && rankUp.up) {
+    hud.showMissionBanner(`RANK UP — RANK ${rankUp.rank}!`);
+    sound.chime();
   }
   const nowActiveId = missions.active ? missions.active.id : null;
   if (!storyOff && nowActiveId && nowActiveId !== wasActiveId) {
@@ -954,6 +1041,42 @@ function step(dt) {
     missions.active ? missions.active.objective : null,
   );
   hud.setCash(missions.cash);
+
+  // --- step 13: the side jobs — one at a time, beside the story missions --
+  // A finished job pays cash, warms up its home district, banks 50 RP
+  // and writes the bank ledger; a payout autosaves like a mission's.
+  jobs.update(dt, {
+    x: player.x,
+    z: player.z,
+    driving,
+    vehicle: driving ? vehicle : null,
+    wanted: police.wanted,
+    dummyHits: combat.dummyHits,
+    vehicles: traffic.vehicles,
+  });
+  const jobPayout = jobs.takePayout();
+  if (jobPayout) {
+    missions.earn(jobPayout.reward);
+    const jobRankUp = rank.addRp(RP_PER_JOB);
+    districts.rewardJob(jobPayout.district, 8);
+    phone.recordLedger(`Job: ${jobPayout.name}`, jobPayout.reward);
+    const text = jobRankUp.up
+      ? `JOB COMPLETE — ${jobPayout.name} +$${jobPayout.reward} · RANK UP — RANK ${jobRankUp.rank}!`
+      : `JOB COMPLETE — ${jobPayout.name} +$${jobPayout.reward} · ${jobPayout.districtName} +8`;
+    hud.showMissionBanner(text);
+    sound.chime();
+    writeSave('auto', collectSaveData());
+    hud.setCash(missions.cash);
+  }
+
+  // --- step 13: the standing readouts — district, rank, side job ----------
+  // The HUD refreshes these every frame (its setters cache, so a steady
+  // value costs nothing); the district follows Raka as he crosses the map.
+  const here = districts.at(player.x, player.z);
+  hud.setDistrict(`${here.name} · ${districts.label(here.id)} ${districts.standing(here.id)}`);
+  const prog = rank.progress;
+  hud.setRank(rank.rank, rank.rp, rank.nextThreshold, prog.earned, prog.needed);
+  hud.setJob(jobs.active ? jobs.active.name : null, jobs.active ? jobs.objective : null);
 
   // --- the radar: Raka, the heat, the street and the mission target --------
   radar.update(radarState());
@@ -1075,6 +1198,30 @@ window.__solmar = {
   get playSeconds() { return playSeconds; },
   /** Step 12: true while the start overlay waits for CONTINUE or NEW GAME. */
   get startPending() { return startPending; },
+  /** Step 13: true while the phone is open (the world is frozen). */
+  get phoneOpen() { return phone.open; },
+  /** Step 13: the phone tab showing now. */
+  get phoneTab() { return phone.tab; },
+  /** Step 13: the district Raka stands in, with its standing and label. */
+  get district() {
+    const d = districts.at(hero.group.position.x, hero.group.position.z);
+    return { name: d.name, standing: districts.standing(d.id), label: districts.label(d.id) };
+  },
+  /** Step 13: every district with its standing and label. */
+  get districts() { return districts.list(); },
+  /** Step 13: the rank, the RP banked, and the next rank's threshold. */
+  get rank() { return { rank: rank.rank, rp: rank.rp, next: rank.nextThreshold }; },
+  /** Step 13: the side job in progress (or null) and the jobs finished. */
+  get job() {
+    return {
+      active: jobs.active ? jobs.active.id : null,
+      objective: jobs.objective,
+      completed: jobs.completedCount,
+      target: jobs.target,
+    };
+  },
+  /** Step 13: the bank ledger's entries, oldest first. */
+  get ledger() { return phone.ledger; },
   /** Step 9: the boats' spots, for the test harness. */
   get boats() {
     return water.boats.map((b) => ({
@@ -1309,6 +1456,58 @@ window.__solmar = {
     saveTo(slot) {
       const data = collectSaveData();
       return writeSave(slot, data) ? data : null;
+    },
+    /** Step 13: open the phone at once (as if Raka pressed T). */
+    openPhone() {
+      if (!phone.open) phone.toggle();
+      return phone.open;
+    },
+    /** Step 13: close the phone at once. */
+    closePhone() {
+      if (phone.open) phone.toggle();
+      return phone.open;
+    },
+    /** Step 13: switch the phone to a tab at once. */
+    phoneTab(name) { return phone.openTab(name); },
+    /** Step 13: the phone's state (for the test harness). */
+    phoneState() {
+      return {
+        open: phone.open,
+        tab: phone.tab,
+        display: document.getElementById('phone').style.display,
+      };
+    },
+    /** Step 13: bank RP at once (the test harness checks the rank-up). */
+    addRp(n) { return rank.addRp(n); },
+    /** Step 13: take a side job at once (as if Raka accepted it on the phone). */
+    acceptJob(id) { return jobs.accept(id); },
+    /** Step 13: drop the active side job at once. */
+    abandonJob() { return jobs.abandon(); },
+    /** Step 13: the side job's state (for the test harness). */
+    jobState() {
+      return {
+        active: jobs.active ? jobs.active.id : null,
+        objective: jobs.objective,
+        completed: jobs.completedCount,
+        target: jobs.target,
+        stage: jobs.stageIndex,
+        list: jobs.list,
+      };
+    },
+    /** Step 13: put Raka beside the active job's target (on foot). */
+    toJobTarget() {
+      const t = jobs.target;
+      if (!t || driving) return false;
+      hero.group.position.set(t.x, 0, t.z + 2);
+      hero.face(Math.PI);
+      hero.group.rotation.y = Math.PI;
+      speed = 0;
+      return true;
+    },
+    /** Step 13: the district a spot sits in, with standing and label. */
+    districtAt(x, z) {
+      const d = districts.at(x, z);
+      return { name: d.name, standing: districts.standing(d.id), label: districts.label(d.id) };
     },
     /** Step 12: load a slot at once. */
     loadFrom(slot) {

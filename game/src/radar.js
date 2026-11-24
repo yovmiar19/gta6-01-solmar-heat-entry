@@ -111,6 +111,23 @@ export function createRadar() {
         ring(state.target.x, state.target.z, 16 * pulse, 'rgba(255, 217, 76, 0.8)', 2);
       }
 
+      // --- the job target: a cyan diamond (the phone's side job) -----------
+      // Step 13: the side job's target reads apart from the mission's
+      // gold, so Raka can chase either one at a glance.
+      if (state.jobTarget) {
+        const p = toRadar(state.jobTarget.x, state.jobTarget.z);
+        const pulse = 1 + 0.25 * Math.sin(time * 5);
+        ctx.fillStyle = '#35e0ff';
+        ctx.beginPath();
+        ctx.moveTo(p.px, p.py - 11 * pulse);
+        ctx.lineTo(p.px + 8 * pulse, p.py);
+        ctx.lineTo(p.px, p.py + 11 * pulse);
+        ctx.lineTo(p.px - 8 * pulse, p.py);
+        ctx.closePath();
+        ctx.fill();
+        ring(state.jobTarget.x, state.jobTarget.z, 16 * pulse, 'rgba(53, 224, 255, 0.8)', 2);
+      }
+
       // --- the street: pedestrians, then the rides -------------------------
       // Pedestrians first, so the rides draw over them where they overlap.
       for (const npc of state.npcs) {

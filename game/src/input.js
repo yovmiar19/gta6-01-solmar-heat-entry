@@ -13,7 +13,7 @@ export function createInput(canvas, onOrbit) {
   let shotQueued = false; // a click (not a drag) since the last takeShot() call
   let reloadQueued = false; // R pressed since the last takeReload() call
   let weatherQueued = false; // C pressed since the last takeWeather() call
-  let timeQueued = false; // T pressed since the last takeTime() call
+  let phoneQueued = false; // T pressed since the last takePhone() call (step 13)
   let jumpQueued = false; // Space pressed since the last takeJump() call (step 10)
   let slot1Queued = false; // 1 pressed since the last takeSlot1() call (step 10)
   let slot2Queued = false; // 2 pressed since the last takeSlot2() call (step 10)
@@ -38,7 +38,7 @@ export function createInput(canvas, onOrbit) {
     if (event.code === 'KeyE' && !event.repeat) actionQueued = true;
     if (event.code === 'KeyR' && !event.repeat) reloadQueued = true;
     if (event.code === 'KeyC' && !event.repeat) weatherQueued = true;
-    if (event.code === 'KeyT' && !event.repeat) timeQueued = true;
+    if (event.code === 'KeyT' && !event.repeat) phoneQueued = true;
     if (event.code === 'Space' && !event.repeat) jumpQueued = true;
     if (event.code === 'Digit1' && !event.repeat) slot1Queued = true;
     if (event.code === 'Digit2' && !event.repeat) slot2Queued = true;
@@ -184,10 +184,10 @@ export function createInput(canvas, onOrbit) {
       weatherQueued = false;
       return pressed;
     },
-    /** True once per T press, then clears: jump the clock two hours (step 8). */
-    takeTime() {
-      const pressed = timeQueued;
-      timeQueued = false;
+    /** True once per T press, then clears: open or close the phone (step 13). */
+    takePhone() {
+      const pressed = phoneQueued;
+      phoneQueued = false;
       return pressed;
     },
     /** True once per Space press, then clears: jump, vault, climb, or dive (step 10). */
@@ -236,7 +236,7 @@ export function createInput(canvas, onOrbit) {
       shotQueued = false;
       reloadQueued = false;
       weatherQueued = false;
-      timeQueued = false;
+      phoneQueued = false;
       jumpQueued = false;
       slot1Queued = false;
       slot2Queued = false;

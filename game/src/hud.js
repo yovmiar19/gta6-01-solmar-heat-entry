@@ -41,9 +41,18 @@ export function createHud() {
   const drownNumEl = document.getElementById('drown-num');
   const diveEl = document.getElementById('dive-overlay');
   const storyBeatEl = document.getElementById('story-beat');
+  const rankLineEl = document.getElementById('rank-line');
+  const rankBarEl = document.getElementById('rank-bar');
+  const districtLineEl = document.getElementById('district-line');
+  const jobNameEl = document.getElementById('job-name');
+  const jobObjectiveEl = document.getElementById('job-objective');
+  const bustedSubEl = document.getElementById('busted-sub');
   const hintEl = document.getElementById('hint');
   const defaultHint = hintEl ? hintEl.innerHTML : '';
   let lastStoryBeat = '';
+  let lastRank = '';
+  let lastDistrict = '';
+  let lastJob = '';
   let lastDrown = -1;
   let lastClock = '';
   let lastState = '';
@@ -123,7 +132,8 @@ export function createHud() {
       }
     },
     /** Show or hide the big BUSTED overlay in the middle of the screen. */
-    showBusted(show) {
+    showBusted(show, subText) {
+      if (subText && bustedSubEl) bustedSubEl.textContent = subText;
       bustedEl.style.display = show ? 'flex' : 'none';
     },
     /** Show or hide the big WASTED overlay (health ran out). */
@@ -282,6 +292,48 @@ export function createHud() {
       if (text === lastStoryBeat) return;
       lastStoryBeat = text;
       storyBeatEl.textContent = text;
+    },
+    /**
+     * Show the rank and the RP progress ("RANK 1 · 120/300 RP") with a
+     * bar that fills toward the next rank (step 13). `earned` is the RP
+     * banked since this rank started and `needed` is the RP the rank
+     * spans; at the top rank the line reads MAX and the bar reads full.
+     */
+    setRank(rank, rp, next, earned = 0, needed = 0) {
+      if (!rankLineEl) return;
+      const key = `${rank}|${rp}|${next}`;
+      if (key === lastRank) return;
+      lastRank = key;
+      rankLineEl.textContent = next === null
+        ? `RANK ${rank} · ${rp} RP · MAX`
+        : `RANK ${rank} · ${rp} / ${next} RP`;
+      if (rankBarEl) {
+        rankBarEl.style.width = needed <= 0 ? '100%' : `${Math.max(0, Math.min(100, (earned / needed) * 100)).toFixed(0)}%`;
+      }
+    },
+    /**
+     * Show where Raka stands and how the district feels about him
+     * ("Lantawa Centre · NEUTRAL 50", step 13) under the title.
+     */
+    setDistrict(text) {
+      if (!districtLineEl) return;
+      if (text === lastDistrict) return;
+      lastDistrict = text;
+      districtLineEl.textContent = text;
+    },
+    /**
+     * Show the active side job: its NAME ("Parcel Run") and its
+     * OBJECTIVE ("Deliver the parcel to the west end", step 13). With
+     * no job in progress the panel says so and points Raka at the
+     * phone.
+     */
+    setJob(name, objective) {
+      if (!jobNameEl) return;
+      const key = `${name ?? ''}|${objective ?? ''}`;
+      if (key === lastJob) return;
+      lastJob = key;
+      jobNameEl.textContent = name ?? 'NO SIDE JOB';
+      jobObjectiveEl.textContent = objective ?? 'Open the phone (T) to take a side job.';
     },
     /**
      * Swap the bottom hint line for a moment ("Space: advance the

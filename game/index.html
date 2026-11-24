@@ -132,6 +132,55 @@
   /* Story beat line in the mission panel (step 11). */
   #story-beat { font-size: 11px; letter-spacing: 0.1em; color: #ff9a5c; font-weight: 700; margin-top: 6px; }
 
+  /* District line under the title (step 13): where Raka stands and how
+     the district feels about him. */
+  #district-line { font-size: 11px; letter-spacing: 0.1em; color: #7ed957; font-weight: 700; margin-top: 4px; }
+
+  /* Side-job tracker in the mission panel (step 13). */
+  .job-sep { border-top: 1px solid rgba(242, 201, 76, 0.35); margin-top: 8px; padding-top: 6px; }
+  #job-name { font-size: 14px; font-weight: 800; letter-spacing: 0.06em; margin-top: 2px; }
+  #job-objective { font-size: 12px; color: #d8cfc2; margin-top: 3px; line-height: 1.35; }
+  #rank-line { font-size: 12px; margin-top: 8px; color: #d8cfc2; }
+  #rank-line b { color: #f2c94c; font-size: 13px; }
+  #rank-bar { height: 100%; background: #35e0ff; width: 0%; border-radius: 4px; }
+
+  /* --- Phone (step 13): the SOLMAR TEL --------------------------------------
+     Lives outside #hud so its buttons can take clicks: a narrow panel
+     with four tabs — JOBS, MAP, BANK, TEXTS — like Karimbu's phone. */
+  #phone { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(520px, 94vw); max-height: 88vh; display: none; flex-direction: column; background: rgba(16, 11, 7, 0.97); border: 1px solid rgba(242, 201, 76, 0.55); border-radius: 12px; padding: 18px 20px; z-index: 20; color: #fff; box-shadow: 0 8px 40px rgba(0, 0, 0, 0.7); }
+  #phone-head { display: flex; justify-content: space-between; align-items: baseline; }
+  #phone-title { font-size: 24px; font-weight: 900; letter-spacing: 0.1em; }
+  #phone-clock { font-size: 16px; font-weight: 800; color: #ffd97a; }
+  #phone-tabs { display: flex; gap: 6px; margin-top: 12px; flex-wrap: wrap; }
+  .phone-tab { background: rgba(255, 255, 255, 0.08); color: #d8cfc2; border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 6px; padding: 7px 12px; font-size: 12px; font-weight: 800; letter-spacing: 0.08em; cursor: pointer; font-family: inherit; }
+  .phone-tab.active { background: #35e0ff; color: #06222b; border-color: #35e0ff; }
+  #phone-body { margin-top: 12px; overflow-y: auto; min-height: 280px; }
+  .phone-page { display: none; }
+  .phone-page.active { display: block; }
+  #phone-map { width: 420px; max-width: 100%; height: auto; display: block; margin: 0 auto; border-radius: 6px; border: 1px solid rgba(242, 201, 76, 0.35); }
+  #phone-map-legend { text-align: center; font-size: 12px; color: #d8cfc2; margin-top: 8px; line-height: 1.6; }
+  .phone-row { display: flex; justify-content: space-between; align-items: center; gap: 12px; font-size: 14px; padding: 8px 2px; border-bottom: 1px solid rgba(255, 255, 255, 0.08); }
+  .phone-row .k { color: #d8cfc2; letter-spacing: 0.08em; font-size: 12px; font-weight: 700; }
+  .phone-row .v { font-weight: 800; text-align: right; }
+  .phone-row .v.in { color: #7ed957; }
+  .phone-row .v.out { color: #ff6b5e; }
+  .phone-note { font-size: 12px; color: #d8cfc2; margin-top: 10px; line-height: 1.5; }
+  .job-card { border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 8px; padding: 10px 12px; margin-top: 8px; }
+  .job-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .job-name { font-weight: 900; letter-spacing: 0.06em; font-size: 14px; }
+  .job-tag { font-size: 10px; font-weight: 800; letter-spacing: 0.1em; padding: 2px 6px; border-radius: 4px; }
+  .job-tag.active { background: #35e0ff; color: #06222b; }
+  .job-tag.done { background: #7ed957; color: #0c2405; }
+  .job-desc { font-size: 12px; color: #d8cfc2; margin-top: 4px; line-height: 1.45; }
+  .job-meta { font-size: 11px; color: #ffd97a; letter-spacing: 0.08em; margin-top: 5px; font-weight: 700; }
+  .job-btns { display: flex; gap: 8px; margin-top: 8px; }
+  .text-msg { border-bottom: 1px solid rgba(255, 255, 255, 0.08); padding: 10px 2px; }
+  .text-head { display: flex; justify-content: space-between; font-size: 12px; font-weight: 800; letter-spacing: 0.1em; }
+  .text-time { color: #d8cfc2; font-weight: 400; }
+  .text-body { font-size: 13px; color: #fff; line-height: 1.5; margin-top: 4px; }
+  #phone-foot { display: flex; align-items: center; gap: 14px; margin-top: 16px; }
+  #phone-hint { font-size: 12px; color: #d8cfc2; }
+
   /* --- Pause menu (step 12) -------------------------------------------------
      Lives outside #hud so its buttons can take clicks: #hud swallows the
      pointer. A centred panel with tabs — MAP, STORY, STATS, SETTINGS,
@@ -182,7 +231,8 @@
   <div id="title-panel" class="panel">
     <div class="name">SOLMAR <span class="heat">HEAT</span></div>
     <div class="place">SOLMAR BAY</div>
-    <div class="step">STEP 12 — PAUSE + SAVE + SETTINGS</div>
+    <div class="step">STEP 13 — PHONE + JOBS + DISTRICTS + RANK</div>
+    <div id="district-line">Lantawa Centre · NEUTRAL 50</div>
   </div>
   <div id="clock-box">
     <div id="clock">17:30</div>
@@ -198,6 +248,13 @@
     <div id="mission-objective">Walk into the glowing cyan marker to start a job.</div>
     <div id="cash-line">CASH <b id="cash-num">$0</b></div>
     <div id="story-beat"></div>
+    <div class="job-sep">
+      <div class="label">SIDE JOB</div>
+      <div id="job-name">NO SIDE JOB</div>
+      <div id="job-objective">Open the phone (T) to take a side job.</div>
+    </div>
+    <div id="rank-line">RANK 1 · 0 / 300 RP</div>
+    <div class="bar"><div id="rank-bar"></div></div>
   </div>
   <div id="story-log" class="panel">
     <div class="label">STORY LOG</div>
@@ -235,7 +292,7 @@
       <div id="dlg-continue">SPACE ▸</div>
     </div>
   </div>
-  <div id="hint"><b>WASD</b> move &nbsp;·&nbsp; <b>Shift</b> run / fast swim &nbsp;·&nbsp; <b>Space</b> jump / vault / dive &nbsp;·&nbsp; <b>1</b> fists &nbsp;·&nbsp; <b>2</b> pistol &nbsp;·&nbsp; <b>E</b> enter car or boat &nbsp;·&nbsp; <b>right-click</b> aim &nbsp;·&nbsp; <b>click</b> shoot / punch &nbsp;·&nbsp; <b>R</b> reload &nbsp;·&nbsp; <b>C</b> weather &nbsp;·&nbsp; <b>T</b> time +2h &nbsp;·&nbsp; <b>L</b> story log &nbsp;·&nbsp; <b>Esc</b> pause &nbsp;·&nbsp; <b>drag</b> to look around &nbsp;·&nbsp; <b>walk south</b> to the beach &nbsp;·&nbsp; <b>glowing marker</b> starts a mission</div>
+  <div id="hint"><b>WASD</b> move &nbsp;·&nbsp; <b>Shift</b> run / fast swim &nbsp;·&nbsp; <b>Space</b> jump / vault / dive &nbsp;·&nbsp; <b>1</b> fists &nbsp;·&nbsp; <b>2</b> pistol &nbsp;·&nbsp; <b>E</b> enter car or boat &nbsp;·&nbsp; <b>right-click</b> aim &nbsp;·&nbsp; <b>click</b> shoot / punch &nbsp;·&nbsp; <b>R</b> reload &nbsp;·&nbsp; <b>C</b> weather &nbsp;·&nbsp; <b>T</b> phone &nbsp;·&nbsp; <b>L</b> story log &nbsp;·&nbsp; <b>Esc</b> pause &nbsp;·&nbsp; <b>drag</b> to look around &nbsp;·&nbsp; <b>walk south</b> to the beach &nbsp;·&nbsp; <b>glowing marker</b> starts a mission</div>
   <div id="busted-overlay">
     <div id="busted-text">BUSTED</div>
     <div id="busted-sub">Raka was caught — the heat is off... for now.</div>
@@ -285,7 +342,7 @@
       <div class="pause-row"><span class="k">RELOAD</span><span class="v">R</span></div>
       <div class="pause-row"><span class="k">FISTS / PISTOL</span><span class="v">1 / 2</span></div>
       <div class="pause-row"><span class="k">WEATHER</span><span class="v">C</span></div>
-      <div class="pause-row"><span class="k">TIME +2 HOURS</span><span class="v">T</span></div>
+      <div class="pause-row"><span class="k">PHONE</span><span class="v">T</span></div>
       <div class="pause-row"><span class="k">STORY LOG</span><span class="v">L</span></div>
       <div class="pause-row"><span class="k">PAUSE MENU</span><span class="v">Esc / P</span></div>
       <div class="pause-row"><span class="k">LOOK AROUND</span><span class="v">Drag mouse</span></div>
@@ -297,6 +354,30 @@
   <div id="pause-foot">
     <button class="pause-btn" id="pause-resume">RESUME</button>
     <span id="pause-hint">Esc / P to resume — the world waits while you read.</span>
+  </div>
+</div>
+
+<!-- Phone (step 13): the SOLMAR TEL — outside #hud so its buttons take clicks. -->
+<div id="phone">
+  <div id="phone-head"><div id="phone-title">SOLMAR TEL</div><div id="phone-clock">17:30</div></div>
+  <div id="phone-tabs">
+    <button class="phone-tab active" data-tab="jobs">JOBS</button>
+    <button class="phone-tab" data-tab="map">MAP</button>
+    <button class="phone-tab" data-tab="bank">BANK</button>
+    <button class="phone-tab" data-tab="texts">TEXTS</button>
+  </div>
+  <div id="phone-body">
+    <div class="phone-page active" id="phone-page-jobs"><div id="phone-jobs-list"></div></div>
+    <div class="phone-page" id="phone-page-map">
+      <canvas id="phone-map" width="440" height="440"></canvas>
+      <div id="phone-map-legend">⬜ Raka &nbsp;·&nbsp; <span style="color:#ffd94c">◆ mission target</span> &nbsp;·&nbsp; <span style="color:#35e0ff">◆ job target</span> &nbsp;·&nbsp; <span style="color:#ff3b2d">● police</span> &nbsp;·&nbsp; <span style="color:#9ac8e8">● rides</span> &nbsp;·&nbsp; <span style="color:#35e0ff">● boats</span></div>
+    </div>
+    <div class="phone-page" id="phone-page-bank"><div id="phone-bank-list"></div></div>
+    <div class="phone-page" id="phone-page-texts"><div id="phone-texts-list"></div></div>
+  </div>
+  <div id="phone-foot">
+    <button class="pause-btn" id="phone-close">CLOSE</button>
+    <span id="phone-hint">T / Esc to close — the world waits while you read.</span>
   </div>
 </div>
 

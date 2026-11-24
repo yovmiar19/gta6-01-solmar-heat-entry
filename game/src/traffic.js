@@ -476,7 +476,7 @@ function createDrivableVehicle(spec) {
  * `heroCar` is the Sunset GT, so the player's ride cannot pass through the
  * other parked rides.
  */
-export function createTraffic(scene, world, police) {
+export function createTraffic(scene, world, police, onCrime) {
   const rand = mulberry32(7);
   const npcs = [];
   const vehicles = [];
@@ -612,6 +612,8 @@ export function createTraffic(scene, world, police) {
             npc.fleeFrom(v.group.position.x, v.group.position.z);
             if (npc.assaultCooldown <= 0) {
               police.noteAssault();
+              // Step 13: running a pedestrian over sours the district he stands in.
+              if (onCrime) onCrime(npc.group.position.x, npc.group.position.z);
               npc.assaultCooldown = 5;
             }
           }

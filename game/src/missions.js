@@ -135,6 +135,23 @@ export function createMissions(scene) {
     get active() { return active; },
     /** Dollars banked from finished jobs. */
     get cash() { return cash; },
+    /**
+     * Step 13: bank cash from a side job (the phone's jobs pay here
+     * too, so the cash total stays one number everywhere).
+     */
+    earn(amount) {
+      cash += Math.max(0, amount);
+      return cash;
+    },
+    /**
+     * Step 13: pay a fine out of the banked cash (a bust). Never
+     * below zero; returns what was actually taken.
+     */
+    deduct(amount) {
+      const taken = Math.min(cash, Math.max(0, amount));
+      cash -= taken;
+      return taken;
+    },
     /** How many jobs are finished in this chain (0–4). */
     get completedCount() { return nextIndex; },
     /** The active job's target spot, or null (for the radar). */

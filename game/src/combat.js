@@ -49,7 +49,7 @@ const SPARK_COLOR = 0xffd23e;
  * leaves the muzzle, with the landing point (so the street can scare the
  * pedestrians standing near it).
  */
-export function createCombat(scene, hero, police, traffic, onHit, onShot) {
+export function createCombat(scene, hero, police, traffic, onHit, onShot, onCrime) {
   // --- the practice dummy: a pole and a ringed board on the avenue ---------
   // It stands 8 metres north of where Raka starts, so a shot straight ahead
   // from the start lands on it. Its meshes carry userData.dummy, so the
@@ -291,6 +291,8 @@ export function createCombat(scene, hero, police, traffic, onHit, onShot) {
           npc.group.position.z += (dz / d) * PUNCH_SHOVE;
           npc.fleeFrom(hero.group.position.x, hero.group.position.z);
           police.noteAssault();
+          // Step 13: hitting a pedestrian sours the district he stands in.
+          if (onCrime) onCrime(nx, nz);
           hits += 1;
           punchHits += 1;
           landed = true;
@@ -370,6 +372,8 @@ export function createCombat(scene, hero, police, traffic, onHit, onShot) {
           if (kind === 'npc') {
             police.noteAssault();
             npcRig.fleeFrom(muzzle.x, muzzle.z);
+            // Step 13: shooting a pedestrian sours the district he stands in.
+            if (onCrime) onCrime(shotX, shotZ);
           }
           if (onHit) onHit();
         }
