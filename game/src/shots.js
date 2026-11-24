@@ -32,10 +32,8 @@ const SHOTS = {
   shoot: { hero: [0, 10], face: Math.PI, phase: 0, lean: 0, cam: [0.35, 0.24, 4.8], car: [2.2, 4.5], aim: true },
   // Step 14: the same frame with each new gun — the SMG, the shotgun and
   // the assault rifle — so each one reads on the survival panel with its
-  // own ammo count.
-  smg: { hero: [0, 10], face: Math.PI, phase: 0, lean: 0, cam: [0.35, 0.24, 4.8], car: [2.2, 4.5], aim: true },
-  shotgun: { hero: [0, 10], face: Math.PI, phase: 0, lean: 0, cam: [0.35, 0.24, 4.8], car: [2.2, 4.5], aim: true },
-  ar: { hero: [0, 10], face: Math.PI, phase: 0, lean: 0, cam: [0.35, 0.24, 4.8], car: [2.2, 4.5], aim: true },
+  // own ammo count. Defined below the literal (they copy the pistol shot)
+  // instead of pasting the same framing three times.
   // Street life: Raka walking north up the avenue, pedestrians mid-stride
   // on the sidewalks, the motorbike on the right edge, the truck and the
   // bus further up the avenue and the red sedan cruising toward him.
@@ -45,6 +43,10 @@ const SHOTS = {
   // showing the target diamond, and the street alive around him.
   mission: { hero: [0, 20], face: Math.PI, phase: 0.9, lean: 0.03, cam: [0, 0.32, 6], car: [2.2, 4.5], street: true },
 };
+
+/** Step 14: the SMG / shotgun / AR staged shots reuse the pistol shot's
+ * framing, so a framing change only has to land in one place. */
+for (const name of ['smg', 'shotgun', 'ar']) SHOTS[name] = { ...SHOTS.shoot };
 
 /**
  * Stage the named scene (any other name is the chase) and freeze the pose.

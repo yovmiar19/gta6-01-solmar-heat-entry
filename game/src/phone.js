@@ -223,8 +223,8 @@ export function createPhone(deps) {
           ? '<span class="job-tag active">ACTIVE</span>'
           : j.done ? '<span class="job-tag done">DONE ✓</span>' : '';
         const btn = j.isActive
-          ? `<button class="pause-btn danger" data-abandon="${j.id}">ABANDON</button>`
-          : `<button class="pause-btn" data-accept="${j.id}"${anyActive ? ' disabled' : ''}>ACCEPT — $${j.reward}</button>`;
+          ? `<button type="button" class="pause-btn danger" data-abandon="${j.id}">ABANDON</button>`
+          : `<button type="button" class="pause-btn" data-accept="${j.id}"${anyActive ? ' disabled' : ''}>ACCEPT — $${j.reward}</button>`;
         return `<div class="job-card"><div class="job-head"><span class="job-name">${j.name}</span>${status}</div>`
           + `<div class="job-desc">${j.desc}</div>`
           + `<div class="job-meta">${j.districtName} · +8 standing · +50 RP</div>`
@@ -263,7 +263,7 @@ export function createPhone(deps) {
         marketCard = `<div class="job-card"><div class="job-head"><span class="job-name">BLACK MARKET</span></div>`
           + `<div class="job-desc">Assault Rifle — long range, tight aim. No questions asked.</div>`
           + `<div class="job-meta">$${market.price.toLocaleString('en-US')} · needs ${market.jobsNeeded} side jobs done</div>`
-          + `<div class="job-btns"><button id="blackmarket-order" class="pause-btn"${disabled}>${label}</button></div></div>`;
+          + `<div class="job-btns"><button type="button" id="blackmarket-order" class="pause-btn"${disabled}>${label}</button></div></div>`;
       }
       bankListEl.innerHTML = ''
         + marketCard
